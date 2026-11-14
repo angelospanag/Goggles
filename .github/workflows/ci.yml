@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # New advisories are published without any change here, so the dependency audit also runs weekly.
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  test:
+    name: Build and test (${{ matrix.os }})
+    if: github.event_name != 'schedule'
+    strategy:
+      # Goggles is cross-platform; a failure on one OS should not hide the result on the others.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+      # Restore happens inside the build so that -warnaserror also covers NuGet's audit: a package
+      # with a known vulnerability fails the build, not just the dedicated job below.
+      - name: Build
+        run: dotnet build -c Release -warnaserror
+      - name: Test
+        run: dotnet test -c Release --no-build
+
+  format:
+    name: Lint (dotnet format)
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+      - name: Restore
+        run: dotnet restore
+      - name: Check formatting and code style
+        run: dotnet format --no-restore --verify-no-changes
+
+  vulnerabilities:
+    name: Vulnerable dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+      - name: Restore
+        run: dotnet restore
+      # Direct and transitive packages, every severity. The command itself always exits 0, so the
+      # verdict comes from its report.
+      - name: Check for known vulnerabilities
+        shell: bash
+        run: |
+          dotnet list package --vulnerable --include-transitive 2>&1 | tee vulnerable.txt
+          if grep -q "has the following vulnerable packages" vulnerable.txt; then
+            echo "::error::Vulnerable packages found — see the report above."
+            exit 1
+          fi

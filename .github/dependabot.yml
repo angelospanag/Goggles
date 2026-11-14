@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # Versions live in Directory.Packages.props (central package management).
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      avalonia:
+        patterns: ["Avalonia*"]
+      protobuf:
+        patterns: ["Google.Protobuf", "Grpc.Tools"]
+    open-pull-requests-limit: 5
+
+  # The workflow pins actions to commit hashes; this keeps those hashes current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

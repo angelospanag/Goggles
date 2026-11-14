@@ -20,6 +20,14 @@ dotnet run --project Goggles.Cli -- chunk <productId> <compressedMd5>   # downlo
 dotnet run --project Goggles.Cli -- galaxy-service --capture ./galaxy   # log what a game asks Galaxy for
 ```
 
+**CI** (`.github/workflows/ci.yml`) runs on every PR and push to `main`: build and test on Linux, macOS
+and Windows with `-warnaserror` (so any new warning fails, and so does a package with a known
+vulnerability, via the NuGet audit settings in `Directory.Build.props`); `dotnet format
+--verify-no-changes`; and `dotnet list package --vulnerable --include-transitive`, which also runs
+weekly because advisories appear without code changes. Dependabot opens PRs for NuGet packages and for
+the workflow's actions, which are pinned to commit hashes. To reproduce locally:
+`dotnet build -c Release -warnaserror && dotnet test -c Release --no-build && dotnet format --verify-no-changes`.
+
 **`Goggles.Cli` is a development harness, not a product.** It exists for the things the desktop app
 cannot do — capturing raw responses with `--dump`, decoding undocumented blobs with
 `manifest --depots`, isolating failures (`play --dry-run` proved launch resolution was correct while
@@ -43,7 +51,7 @@ Goggles.Core/     all logic; no UI dependency
   Api/Auth/         OAuth2, token storage, the auth DelegatingHandler
   Api/Embed/        embed.gog.com — owned library, user data
   Api/ContentSystem/ builds, manifests, secure links, CDN
-  Library/          domain models + LibrarySyncService
+  Library/          domain models + LibrarySyncService, LibraryCache (library.json)
   Manifests/        ManifestResolver → ResolvedBuild (files, chunks, offsets)
   Downloads/        DownloadEngine — parallel, resumable, verified
   Launching/        GameLauncher — reads goggame-{id}.info play tasks; WindowsRunner (CrossOver/
@@ -70,7 +78,8 @@ native dependencies around.
   implicit usings for every project; `Directory.Packages.props` holds every NuGet version. A new
   package gets a `<PackageVersion>` there and a version-less `<PackageReference>` in its project.
   The desktop project is `Goggles.Desktop` but builds an assembly named `Goggles`, so the executable
-  and the macOS menu-bar name stay "Goggles".
+  is `Goggles`. What macOS shows in Activity Monitor, the Dock and the menu bar is a separate thing:
+  Avalonia's `Application.Name`, set in `App.axaml`. Left unset it is "Avalonia Application".
 - **Wire DTOs stay inside `Api/<host>/Models/` and never leave the service layer.** `embed.gog.com`
   and `api.gog.com` speak different JSON dialects; they are reconciled in `Library/`, not merged
   into shared DTOs.
@@ -206,7 +215,7 @@ Windows-only titles run on macOS/Linux through CrossOver or Wine — A.D. 2044 h
 through a CrossOver 26.2 bottle end to end. The runner is picked per game in the detail panel; the
 CLI's `play` still launches natively only.
 
-Not built yet: SQLite cache, install execution (dependencies/redistributables are listed but not
+Not built yet: install execution (dependencies/redistributables are listed but not
 run), cloud saves, creating bottles or managing Wine builds, Proton.
 
 ### Launching (captured, not documented)
@@ -290,6 +299,20 @@ frame with credentials redacted. Bodies it cannot decode
 Next phases: answer auth and library info, then achievements and stats with an on-disk queue for
 offline unlocks, then start the service from the desktop app around a launch, then CrossOver.
 
+### Library cache
+
+`LibraryCache` keeps the last sync in `library.json` beside the tokens. On launch the library screen
+shows it at once and calls `SyncAsync(knownChecksum)`, which costs one `userData.json` request when
+`checksum.games` is unchanged (measured ~0.4 s, against ~2–3 s for a full three-page sync). The
+Refresh button always syncs in full. The checksum is only trusted for `LibraryCache.MaxAge` (a day),
+because it tracks what is owned, not every field shown — a community rating can change without it.
+The file is tied to the account id, ignored if it belongs to anyone else or is an older format, and
+deleted on sign-out. Heroic, by comparison, caches its GOG library forever and re-fetches all of it
+on every online refresh.
+
+Pages after the first are fetched four at a time; the empty-page guard still stops in page order, so
+a `totalPages` GOG over-reports costs at most one wasted batch.
+
 ### Install layout
 
 `GameLibrary` owns it. A build goes into the library root under the directory name the manifest
@@ -318,8 +341,10 @@ strictly inside the library root, it is a real directory rather than a symlink, 
 the CLI is protected too. The CLI's `uninstall` is a dry run unless given `--yes`.
 
 UI notes: `GogSession` is the single composition root — both the app and the CLI build the client
-stack through it, so they cannot drift. The library grid uses a plain `ItemsControl` over a
-`WrapPanel`, which does **not** virtualise; fine for a few hundred tiles, worth revisiting for
+stack through it, so they cannot drift. The library grid is a `ListBox` over `Controls/TileWrapPanel`:
+as many columns as a 208 px minimum allows, each stretched to fill the row (a `WrapPanel` left a gap
+of up to a whole tile on the right), with covers held at GOG's 196x110 shape by
+`AspectRatioDecorator`. Neither virtualises; fine for a few hundred tiles, worth revisiting for
 larger libraries. Covers load for the whole library at once, throttled to six concurrent fetches.
 Sign-in happens in the window on macOS: `Goggles.Desktop/Platform/MacWebView.cs` embeds a real `WKWebView`
 through `NativeControlHost` and the Objective-C runtime, and the authorization code is taken from
@@ -349,7 +374,7 @@ secure link on 403, since signing tokens expire mid-download.
 Tokens are stored as plaintext JSON at `~/.config/Goggles/tokens.json` (mode 600). OS-backed secure
 storage slots in behind `ITokenStore` later.
 
-Roughly in order: SQLite cache → manifest resolution (spike first) → download engine → delta
+Roughly in order: library cache (done, as JSON) → manifest resolution (spike first) → download engine → delta
 patching (deferred; v1 can do full downloads only) → install → launch + cloud saves. Windows titles
 run through user-installed CrossOver or Wine; managing runners themselves (bottles, Wine builds,
 Proton) is not planned for v1.

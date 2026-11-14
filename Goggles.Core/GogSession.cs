@@ -66,6 +66,9 @@ public sealed class GogSession : IDisposable
 
     public LibrarySyncService Library { get; }
 
+    /// <summary>The last library sync on disk. Nothing is read or written until it is asked to.</summary>
+    public LibraryCache LibraryCache { get; } = new();
+
     public GameplayClient Gameplay { get; }
 
     public GameStatsCache Stats { get; }

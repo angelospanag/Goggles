@@ -103,7 +103,7 @@ public sealed class DownloadEngine
             var path = Path.Combine(destination, file.Path);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
 
-            using var handle = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.Write);
+            using var handle = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite);
 
             // Never shrink: a longer file is a partial download to be resumed, not a mistake.
             if (RandomAccess.GetLength(handle) < file.Size)
@@ -136,7 +136,10 @@ public sealed class DownloadEngine
 
                 var plain = Verify(chunk, compressed);
 
-                using var handle = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.Write);
+                // Several workers write different chunks of one file at once, each to its own byte range.
+                // Windows enforces the share mode (Unix ignores it), so the default FileShare.Read would
+                // refuse every worker after the first.
+                using var handle = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite);
                 await RandomAccess.WriteAsync(handle, plain, chunk.Offset, cancellationToken)
                     .ConfigureAwait(false);
 
@@ -210,7 +213,10 @@ public sealed class DownloadEngine
 
         try
         {
-            using var handle = File.OpenHandle(path, FileMode.Open, FileAccess.Read);
+            // Shared for the same reason as the writes: on Windows a stricter mode makes this check fail
+            // whenever a worker is writing elsewhere in the file, and the catch below would then quietly
+            // treat every intact chunk as damaged and fetch it again.
+            using var handle = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 
             if (RandomAccess.GetLength(handle) < chunk.Offset + chunk.Size)
             {

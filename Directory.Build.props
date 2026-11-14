@@ -7,4 +7,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <!-- Check every package, direct or transitive, against GitHub's advisory database on restore.
+       Locally that is a warning; CI builds with -warnaserror, so there it fails the build. -->
+  <PropertyGroup>
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
+  </PropertyGroup>
+
 </Project>
