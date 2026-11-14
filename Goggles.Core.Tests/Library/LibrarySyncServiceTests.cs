@@ -78,6 +78,29 @@ public class LibrarySyncServiceTests
     }
 
     [Fact]
+    public async Task Keeps_gogs_order_when_pages_arrive_together()
+    {
+        // Six pages: the first alone, then two batches. Page n holds the single game with id n.
+        var handler = new StubHttpMessageHandler((request, _) =>
+        {
+            var uri = request.RequestUri!;
+            if (uri.AbsolutePath.EndsWith("userData.json", StringComparison.Ordinal))
+            {
+                return StubHttpMessageHandler.Json("""{"checksum":{"games":"abc123"}}""");
+            }
+
+            var page = uri.Query.Split('&').Single(part => part.Contains("page=", StringComparison.Ordinal))[^1];
+            return StubHttpMessageHandler.Json($$"""{"totalPages":6,"products":[{"id":{{page}},"title":"Game {{page}}"}]}""");
+        });
+
+        var result = await CreateService(handler).SyncAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal([1L, 2L, 3L, 4L, 5L, 6L], result.Games.Select(game => game.Id));
+        Assert.Equal(6, result.PagesFetched);
+    }
+
+    [Fact]
     public async Task Stops_early_when_a_promised_page_comes_back_empty()
     {
         var handler = new StubHttpMessageHandler((request, _) =>
@@ -99,7 +122,7 @@ public class LibrarySyncServiceTests
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Single(result.Games);
-        Assert.Equal(3, handler.CallCount); // userData + page 1 + the empty page 2
+        Assert.Equal(1 + 1 + 4, handler.CallCount); // userData + page 1 + one batch of pages 2–5
     }
 
     [Fact]
@@ -202,7 +225,8 @@ public class LibrarySyncServiceTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => CreateService(handler).SyncAsync(cancellationToken: cancellation.Token));
 
-        Assert.Equal(3, handler.CallCount);
+        // userData + page 1 + the batch already in flight (pages 2–5); pages 6–9 are never asked for.
+        Assert.Equal(1 + 1 + 4, handler.CallCount);
     }
 
     private static LibrarySyncService CreateService(StubHttpMessageHandler handler) =>

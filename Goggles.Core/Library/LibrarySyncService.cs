@@ -12,6 +12,9 @@ namespace Goggles.Core.Library;
 /// </remarks>
 public sealed class LibrarySyncService
 {
+    /// <summary>How many library pages are requested at once after the first.</summary>
+    private const int ConcurrentPages = 4;
+
     private readonly EmbedClient _embed;
 
     public LibrarySyncService(EmbedClient embed) => _embed = embed;
@@ -87,20 +90,26 @@ public sealed class LibrarySyncService
 
         games.AddRange(first.Products.Select(Map));
 
-        for (var page = 2; page <= first.TotalPages; page++)
+        // The rest are fetched a batch at a time rather than one after another: a 254-game library is
+        // three pages, and walking them in sequence was most of the wait on a full sync.
+        for (var start = 2; start <= first.TotalPages; start += ConcurrentPages)
         {
-            var next = await _embed
-                .GetFilteredProductsAsync(page, hidden, cancellationToken: cancellationToken)
+            var count = Math.Min(ConcurrentPages, first.TotalPages - start + 1);
+            var batch = await Task.WhenAll(Enumerable.Range(start, count).Select(page =>
+                    _embed.GetFilteredProductsAsync(page, hidden, cancellationToken: cancellationToken)))
                 .ConfigureAwait(false);
 
-            // GOG has been known to report more pages than it will actually serve; stopping on an
-            // empty page keeps a bad totalPages from turning into a long run of pointless requests.
-            if (next.Products.Count == 0)
+            for (var i = 0; i < batch.Length; i++)
             {
-                return (page, first.HasHiddenProducts);
-            }
+                // GOG has been known to report more pages than it will actually serve; stopping at the
+                // first empty page, in page order, keeps a bad totalPages to one wasted batch at most.
+                if (batch[i].Products.Count == 0)
+                {
+                    return (start + i, first.HasHiddenProducts);
+                }
 
-            games.AddRange(next.Products.Select(Map));
+                games.AddRange(batch[i].Products.Select(Map));
+            }
         }
 
         return (Math.Max(first.TotalPages, 1), first.HasHiddenProducts);

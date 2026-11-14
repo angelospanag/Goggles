@@ -61,6 +61,7 @@ public partial class MainViewModel : ViewModelBase
     {
         var library = new LibraryViewModel(
             _session.Library,
+            _session.LibraryCache,
             _session.Embed,
             _covers,
             _session.Stats,
@@ -113,6 +114,9 @@ public partial class MainViewModel : ViewModelBase
             }
 
             await _session.Auth.SignOutAsync();
+
+            // The cache lists what this account owns; like the tokens, it does not outlive sign-out.
+            _session.LibraryCache.Clear();
             ShowLogin(message);
         }
         finally

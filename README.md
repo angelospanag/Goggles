@@ -98,8 +98,9 @@ uninstall <id>          delete an installed game (dry run unless --yes)
 
 **On credentials:** tokens are written as plaintext JSON to `tokens.json` in the app's data folder
 — `~/Library/Application Support/Goggles` on macOS, `~/.config/Goggles` on Linux — with owner-only
-permissions. Secure OS-backed storage is planned. Response dumps contain your email,
-account id, and owned library — keep them out of version control.
+permissions. Secure OS-backed storage is planned. The same folder holds `library.json`, the last
+library sync, which Goggles shows at launch and deletes when you sign out. Response dumps contain
+your email, account id, and owned library — keep them out of version control.
 
 ## Playing Windows games on macOS and Linux
 
@@ -135,7 +136,7 @@ download engine can't accidentally touch the UI thread.
 
 - [x] OAuth2 login, token storage and refresh
 - [x] Library sync (owned games)
-- [ ] Local SQLite cache
+- [x] Library cache — the last sync is shown instantly at launch, then checked against GOG behind it
 - [x] Manifest resolution — build/branch/language/bitness selection against GOG's undocumented
       generation 2 manifests
 - [x] Download engine — multi-threaded, resumable, checksum-verified

@@ -39,6 +39,7 @@ public sealed record OwnedGame
     /// for it.</summary>
     public int CommunityRating { get; init; }
 
+    [System.Text.Json.Serialization.JsonIgnore]
     public bool SupportsCurrentPlatform => Platforms.HasFlag(CurrentPlatform);
 
     /// <summary>The <see cref="GamePlatforms"/> value matching the machine Goggles is running on.</summary>

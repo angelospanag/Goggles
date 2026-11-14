@@ -16,6 +16,7 @@ namespace Goggles.Desktop.ViewModels;
 public partial class LibraryViewModel : ViewModelBase
 {
     private readonly LibrarySyncService _library;
+    private readonly LibraryCache _cache;
     private readonly EmbedClient _embed;
     private readonly CoverImageCache _covers;
     private readonly GameStatsCache _stats;
@@ -25,6 +26,9 @@ public partial class LibraryViewModel : ViewModelBase
     private readonly string _installRoot;
     private readonly List<GameTileViewModel> _allGames = [];
     private readonly RunnerPreferences _runnerPreferences = new();
+
+    /// <summary>False until the first sync, which is the one allowed to start from the cache.</summary>
+    private bool _hasRefreshed;
 
     private CancellationTokenSource? _coverLoading;
     private CancellationTokenSource? _statsLoading;
@@ -71,6 +75,7 @@ public partial class LibraryViewModel : ViewModelBase
 
     public LibraryViewModel(
         LibrarySyncService library,
+        LibraryCache cache,
         EmbedClient embed,
         CoverImageCache covers,
         GameStatsCache stats,
@@ -80,6 +85,7 @@ public partial class LibraryViewModel : ViewModelBase
         string installRoot)
     {
         _library = library;
+        _cache = cache;
         _embed = embed;
         _covers = covers;
         _stats = stats;
@@ -101,54 +107,103 @@ public partial class LibraryViewModel : ViewModelBase
 
     public bool IsEmpty => !IsLoading && Games.Count == 0;
 
+    /// <summary>
+    /// Syncs the library. The first time, the cached copy from the last run is shown straight away and
+    /// GOG is asked only whether it changed — one request when it has not. The Refresh button always
+    /// fetches in full, since pressing it says "show me what GOG has now".
+    /// </summary>
     [RelayCommand]
     public async Task RefreshAsync()
     {
         IsLoading = true;
         Error = null;
-        Status = "Syncing library…";
+
+        var userId = (await _tokens.LoadAsync())?.UserId;
+        var cached = !_hasRefreshed && userId is not null ? await _cache.LoadAsync(userId) : null;
+        var knownChecksum = _hasRefreshed ? null : _cache.ChecksumWorthTrusting(cached);
+        _hasRefreshed = true;
+
+        if (cached is not null)
+        {
+            Show(cached.Games, cached.AccountName);
+            Status = $"{_allGames.Count} games · checking for changes…";
+        }
+        else
+        {
+            Status = "Syncing library…";
+        }
 
         try
         {
-            var result = await _library.SyncAsync();
-            AccountName = result.AccountName;
+            var result = await _library.SyncAsync(knownChecksum);
+            AccountName = result.AccountName ?? AccountName;
 
-            // GOG returns the library newest-purchase first; keeping the index preserves that
-            // ordering, which would otherwise be lost the moment the grid sorts by title.
-            _allGames.Clear();
-            _allGames.AddRange(result.Games
-                .Select((game, index) => new GameTileViewModel(game, _covers) { LibraryOrder = index }));
-
-            Categories.Clear();
-            foreach (var category in _allGames
-                         .Select(game => game.Category)
-                         .OfType<string>()
-                         .Distinct()
-                         .OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase))
+            if (result.Changed)
             {
-                Categories.Add(category);
+                Show(result.Games, result.AccountName);
+
+                if (userId is not null)
+                {
+                    await SaveToCacheAsync(userId, result);
+                }
             }
 
-            RefreshInstalledState();
-            ApplyFilter();
             Status = $"{_allGames.Count} games";
-            OnPropertyChanged(nameof(PlayableCount));
-
-            StartLoadingCovers();
         }
         // A rejected session also raises AuthService.SignInRequired, which takes the shell back to
         // sign-in; the message here only shows for the moment before it does, or for failures that
-        // signing in again would not fix.
+        // signing in again would not fix. A library shown from the cache stays on screen meanwhile.
         catch (Exception exception) when (exception is HttpRequestException or Core.Api.GogApiException
                                               or GogAuthException)
         {
             Error = exception.Message;
-            Status = null;
+            Status = _allGames.Count > 0 ? $"{_allGames.Count} games" : null;
         }
         finally
         {
             IsLoading = false;
             OnPropertyChanged(nameof(IsEmpty));
+        }
+    }
+
+    /// <summary>Replaces the library on screen.</summary>
+    private void Show(IReadOnlyList<OwnedGame> games, string? accountName)
+    {
+        AccountName = accountName ?? AccountName;
+
+        // GOG returns the library newest-purchase first; keeping the index preserves that
+        // ordering, which would otherwise be lost the moment the grid sorts by title.
+        _allGames.Clear();
+        _allGames.AddRange(games
+            .Select((game, index) => new GameTileViewModel(game, _covers) { LibraryOrder = index }));
+
+        Categories.Clear();
+        foreach (var category in _allGames
+                     .Select(game => game.Category)
+                     .OfType<string>()
+                     .Distinct()
+                     .OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase))
+        {
+            Categories.Add(category);
+        }
+
+        RefreshInstalledState();
+        ApplyFilter();
+        OnPropertyChanged(nameof(PlayableCount));
+        OnPropertyChanged(nameof(IsEmpty));
+
+        StartLoadingCovers();
+    }
+
+    private async Task SaveToCacheAsync(string userId, LibrarySyncResult result)
+    {
+        try
+        {
+            await _cache.SaveAsync(userId, result);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // The cache only makes the next launch faster; failing to write it costs nothing today.
         }
     }
 
