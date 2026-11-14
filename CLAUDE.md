@@ -259,7 +259,11 @@ service into Core instead, in phases, and phase 1 (observe only) is done.
   `2 << 56` OR-ed in. Unlocks then go to `gameplay.gog.com/clients/{gameClientId}/users/{userId}/…`.
 - **The SDK is a shim.** `LIBRARY_INFO_REQUEST` asks where GOG's "peer" library is; the service must
   download it (`cfg.gog.com/desktop-galaxy-peer/7/master/files-{windows,osx}.json`) and say where.
-- **Playtime is not recorded by Comet either**; no session-reporting call has been found.
+- **Playtime is the launcher's job, not the service's.** Comet never records sessions; Heroic does it
+  itself after a game exits: `POST gameplay.gog.com/games/{productId}/users/{userId}/sessions` with
+  `{session_date (unix seconds), time (minutes)}`, expecting `201`, skipping sessions under a minute
+  and queueing them while offline (`updateGOGPlaytime` in Heroic's `gog/games.ts`). Unverified by
+  Goggles so far.
 - **Product id or client id?** `GameplayClient` reads achievements at `clients/{productId}/…` with
   Galaxy's own token, confirmed against a live account; Comet reads and writes at
   `clients/{gameClientId}/…` with the game's token. Which form the *write* accepts is unverified.
