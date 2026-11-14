@@ -76,7 +76,8 @@ native dependencies around.
   implicit usings for every project; `Directory.Packages.props` holds every NuGet version. A new
   package gets a `<PackageVersion>` there and a version-less `<PackageReference>` in its project.
   The desktop project is `Goggles.Desktop` but builds an assembly named `Goggles`, so the executable
-  and the macOS menu-bar name stay "Goggles".
+  is `Goggles`. What macOS shows in Activity Monitor, the Dock and the menu bar is a separate thing:
+  Avalonia's `Application.Name`, set in `App.axaml`. Left unset it is "Avalonia Application".
 - **Wire DTOs stay inside `Api/<host>/Models/` and never leave the service layer.** `embed.gog.com`
   and `api.gog.com` speak different JSON dialects; they are reconciled in `Library/`, not merged
   into shared DTOs.
