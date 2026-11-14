@@ -137,6 +137,11 @@ public sealed class CommunicationService : IAsyncDisposable
             {
                 reply = await _handler(connection, request, cancellationToken).ConfigureAwait(false);
             }
+            catch (GalaxyConnectionRefusedException exception)
+            {
+                _log?.WriteLine($"Galaxy: connection {connection.Id} refused: {exception.Message}");
+                return;
+            }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 // One failing request must not cost the game its connection, or every later call fails too.

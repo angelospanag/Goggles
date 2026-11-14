@@ -95,7 +95,7 @@ resolve <id>            list the files a build would install
 download <id>           download a build (resumable; --parallel N, --verify, --lang, --out)
 play <id>               launch an installed game (--dry-run to just resolve it)
 uninstall <id>          delete an installed game (dry run unless --yes)
-galaxy-service          stand in for Galaxy's local service and log what a game sends (--capture <dir>)
+galaxy-service          stand in for Galaxy's local service: sign games in, log what they send (--capture <dir>)
 --dump <dir>            write raw API responses to <dir>
 ```
 
@@ -143,10 +143,11 @@ Goggles is building its own version of that service, inside the app:
 | Heroic | [Comet](https://github.com/imLinguin/comet), a separate Rust program Heroic downloads and starts alongside the game |
 | Goggles | Built into `Goggles.Core`: no extra program, and it uses the sign-in Goggles already has |
 
-It's being built in phases. **Phase 1 is done:** the service listens and logs what a game sends,
-and Absolute Drift on macOS has connected to it and asked to sign in. It doesn't answer yet. Next it
-signs games in, then records achievements and stats (including unlocks made offline), then starts
-automatically when you press Play, and finally works for Windows games in CrossOver.
+It's being built in phases. **Phases 1 and 2 are done:** the service listens, logs what a game
+sends, and signs the game in. Absolute Drift on macOS accepts the sign-in and then asks for its
+achievements and stats, which aren't answered yet. Next it records achievements and stats
+(including unlocks made offline), then starts automatically when you press Play, and finally works
+for Windows games in CrossOver.
 
 To watch what a game asks for, run `galaxy-service` from the command-line harness, then launch the
 game. Quit GOG Galaxy (or Comet) first, since only one program can use the port. The message

@@ -651,11 +651,14 @@ async Task<int> GalaxyServiceAsync()
         Directory.CreateDirectory(captureDirectory);
     }
 
+    using var clients = CreateSession();
+    var handler = new CommunicationHandler(clients.Auth, clients.Embed, Console.Error);
+
     var received = 0;
     await using var service = new CommunicationService(
-        (connection, message, _) =>
+        async (connection, message, cancellationToken) =>
         {
-            Console.WriteLine($"[{connection.Id}] {CommunicationMessages.Describe(message)}");
+            Console.WriteLine($"[{connection.Id}] <- {CommunicationMessages.Describe(message)}");
 
             if (captureDirectory is not null)
             {
@@ -663,8 +666,11 @@ async Task<int> GalaxyServiceAsync()
                 File.WriteAllBytes(Path.Combine(captureDirectory, name), GalaxyFraming.Encode(CommunicationMessages.Redact(message)));
             }
 
-            // Observe only: no answer yet, so a game will wait on its first request.
-            return ValueTask.FromResult<GalaxyMessage?>(null);
+            var reply = await handler.HandleAsync(connection, message, cancellationToken);
+            Console.WriteLine(reply is null
+                ? $"[{connection.Id}] -> (no answer)"
+                : $"[{connection.Id}] -> {CommunicationMessages.Describe(reply)}");
+            return reply;
         },
         galaxyPort,
         Console.Error);
@@ -717,8 +723,8 @@ void PrintUsage()
           stats <id>         Print achievement/playtime stats, plus the raw sessions response body
                               (gameplay.gog.com is undocumented — this is how to verify decoding
                               against a real account)
-          galaxy-service     Stand in for Galaxy's local Communication Service and log every message a
-                             game sends it (observe only for now: nothing is answered yet)
+          galaxy-service     Stand in for Galaxy's local Communication Service, logging every message a
+                             game sends it (answers sign-in only so far)
 
         Options:
           --hidden           Include hidden products (library)
