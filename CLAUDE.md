@@ -42,7 +42,7 @@ Goggles.Core/     all logic; no UI dependency
   Api/Auth/         OAuth2, token storage, the auth DelegatingHandler
   Api/Embed/        embed.gog.com — owned library, user data
   Api/ContentSystem/ builds, manifests, secure links, CDN
-  Library/          domain models + LibrarySyncService
+  Library/          domain models + LibrarySyncService, LibraryCache (library.json)
   Manifests/        ManifestResolver → ResolvedBuild (files, chunks, offsets)
   Downloads/        DownloadEngine — parallel, resumable, verified
   Launching/        GameLauncher — reads goggame-{id}.info play tasks; WindowsRunner (CrossOver/
@@ -204,7 +204,7 @@ Windows-only titles run on macOS/Linux through CrossOver or Wine — A.D. 2044 h
 through a CrossOver 26.2 bottle end to end. The runner is picked per game in the detail panel; the
 CLI's `play` still launches natively only.
 
-Not built yet: SQLite cache, install execution (dependencies/redistributables are listed but not
+Not built yet: install execution (dependencies/redistributables are listed but not
 run), cloud saves, creating bottles or managing Wine builds, Proton.
 
 ### Launching (captured, not documented)
@@ -238,6 +238,20 @@ changes. Goggles drives a runner the user already has and never installs one.
   runtime's quoting rules so each argument reaches the game intact through `ArgumentList`.
 - The runner's output is discarded like a native game's, so a runner that fails immediately is
   currently silent in the UI — run the command by hand to see why.
+
+### Library cache
+
+`LibraryCache` keeps the last sync in `library.json` beside the tokens. On launch the library screen
+shows it at once and calls `SyncAsync(knownChecksum)`, which costs one `userData.json` request when
+`checksum.games` is unchanged (measured ~0.4 s, against ~2–3 s for a full three-page sync). The
+Refresh button always syncs in full. The checksum is only trusted for `LibraryCache.MaxAge` (a day),
+because it tracks what is owned, not every field shown — a community rating can change without it.
+The file is tied to the account id, ignored if it belongs to anyone else or is an older format, and
+deleted on sign-out. Heroic, by comparison, caches its GOG library forever and re-fetches all of it
+on every online refresh.
+
+Pages after the first are fetched four at a time; the empty-page guard still stops in page order, so
+a `totalPages` GOG over-reports costs at most one wasted batch.
 
 ### Install layout
 
@@ -298,7 +312,7 @@ secure link on 403, since signing tokens expire mid-download.
 Tokens are stored as plaintext JSON at `~/.config/Goggles/tokens.json` (mode 600). OS-backed secure
 storage slots in behind `ITokenStore` later.
 
-Roughly in order: SQLite cache → manifest resolution (spike first) → download engine → delta
+Roughly in order: library cache (done, as JSON) → manifest resolution (spike first) → download engine → delta
 patching (deferred; v1 can do full downloads only) → install → launch + cloud saves. Windows titles
 run through user-installed CrossOver or Wine; managing runners themselves (bottles, Wine builds,
 Proton) is not planned for v1.
