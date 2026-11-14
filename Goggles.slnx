@@ -1,0 +1,11 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="Goggles.Cli/Goggles.Cli.csproj" />
+  <Project Path="Goggles.Core.Tests/Goggles.Core.Tests.csproj" />
+  <Project Path="Goggles.Core/Goggles.Core.csproj" />
+  <Project Path="Goggles.Desktop/Goggles.Desktop.csproj" />
+</Solution>

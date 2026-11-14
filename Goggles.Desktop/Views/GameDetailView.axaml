@@ -1,0 +1,312 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Goggles.Desktop.ViewModels"
+             xmlns:launching="using:Goggles.Core.Launching"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+             x:Class="Goggles.Desktop.Views.GameDetailView"
+             x:DataType="vm:GameDetailViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="Button.tab">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Opacity" Value="0.6" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Button.tab.active">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Button.link">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource SystemAccentColor}" />
+        </Style>
+    </UserControl.Styles>
+
+    <DockPanel>
+
+        <!-- Header: back arrow, tabs, and the install/play actions — the one row that's always
+             visible regardless of which tab is active. -->
+        <Border DockPanel.Dock="Top" Padding="12,8" Background="#18808080">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+
+                <Button Grid.Column="0"
+                        Content="←"
+                        FontSize="16"
+                        Background="Transparent"
+                        ToolTip.Tip="Back to library"
+                        Command="{Binding BackCommand}" />
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="20" Margin="16,0" VerticalAlignment="Center">
+                    <Button Content="Overview"
+                            Classes="tab"
+                            Classes.active="{Binding ActiveTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:DetailTab.Overview}}"
+                            Command="{Binding SetTabCommand}"
+                            CommandParameter="{x:Static vm:DetailTab.Overview}" />
+                    <Button Content="My progress"
+                            Classes="tab"
+                            Classes.active="{Binding ActiveTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:DetailTab.Progress}}"
+                            Command="{Binding SetTabCommand}"
+                            CommandParameter="{x:Static vm:DetailTab.Progress}" />
+                    <Button Content="Extras"
+                            Classes="tab"
+                            Classes.active="{Binding ActiveTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:DetailTab.Extras}}"
+                            Command="{Binding SetTabCommand}"
+                            CommandParameter="{x:Static vm:DetailTab.Extras}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                    <Button Content="▶  Play"
+                            Classes="accent"
+                            Command="{Binding PlayCommand}"
+                            IsVisible="{Binding CanPlay}" />
+                    <Button Content="Install"
+                            Command="{Binding InstallCommand}"
+                            IsVisible="{Binding !IsDownloading}" />
+                    <Button Content="Cancel"
+                            Command="{Binding CancelCommand}"
+                            IsVisible="{Binding IsDownloading}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <ScrollViewer>
+            <Grid>
+
+                <!-- "Extras": not built yet, matching the Go port's scope. -->
+                <TextBlock Text="Not available yet."
+                           Opacity="0.5"
+                           HorizontalAlignment="Center"
+                           Margin="0,80,0,0"
+                           IsVisible="{Binding ActiveTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:DetailTab.Extras}}" />
+
+                <!-- My progress: every achievement, locked and unlocked. -->
+                <StackPanel Margin="24,20" Spacing="14"
+                            IsVisible="{Binding ActiveTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:DetailTab.Progress}}">
+
+                    <TextBlock Opacity="0.7" FontSize="13" IsVisible="{Binding HasAnyAchievements}">
+                        <Run Text="{Binding AchievementsUnlocked}" FontWeight="SemiBold" />
+                        <Run Text="/" />
+                        <Run Text="{Binding AchievementsTotal}" FontWeight="SemiBold" />
+                        <Run Text="unlocked" />
+                    </TextBlock>
+
+                    <TextBlock Text="Loading…" Opacity="0.6" IsVisible="{Binding IsLoadingProgress}" />
+
+                    <TextBlock Text="This game has no achievements."
+                               Opacity="0.6"
+                               IsVisible="{Binding !HasAnyAchievements}" />
+
+                    <ItemsControl ItemsSource="{Binding AllAchievements}">
+                        <ItemsControl.Styles>
+                            <Style Selector="Grid.locked">
+                                <Setter Property="Opacity" Value="0.5" />
+                            </Style>
+                            <Style Selector="TextBlock.secret">
+                                <Setter Property="FontStyle" Value="Italic" />
+                            </Style>
+                        </ItemsControl.Styles>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AchievementProgressItem">
+                                <Grid ColumnDefinitions="40,*,Auto" ColumnSpacing="12" Margin="0,0,0,10"
+                                      Classes.locked="{Binding !IsUnlocked}">
+                                    <Border Grid.Column="0" Width="40" Height="40" CornerRadius="4" Background="#28808080">
+                                        <Image Source="{Binding Icon}" Stretch="UniformToFill" />
+                                    </Border>
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Name}" FontSize="13"
+                                                   Classes.secret="{Binding IsSecret}" />
+                                        <TextBlock Text="{Binding Description}"
+                                                   FontSize="11"
+                                                   Opacity="0.6"
+                                                   IsVisible="{Binding Description, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="2"
+                                               Text="{Binding RelativeUnlockedAt}"
+                                               FontSize="11"
+                                               Opacity="0.6"
+                                               VerticalAlignment="Center"
+                                               IsVisible="{Binding IsUnlocked}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <StackPanel IsVisible="{Binding ActiveTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:DetailTab.Overview}}">
+
+                    <!-- Hero: background art, title, rating, and the real GOG store link. -->
+                    <Panel MinHeight="280">
+                        <Image Source="{Binding Hero}" Stretch="UniformToFill" />
+                        <Border Background="#B0141414" />
+                        <Image Source="{Binding Tile.Cover}"
+                               Stretch="UniformToFill"
+                               IsVisible="{Binding Hero, Converter={x:Static ObjectConverters.IsNull}}"
+                               Opacity="0.35" />
+
+                        <StackPanel VerticalAlignment="Bottom" Margin="24" Spacing="8">
+                            <TextBlock Text="{Binding Title}"
+                                       FontSize="28"
+                                       FontWeight="Bold"
+                                       Foreground="White" />
+                            <StackPanel Orientation="Horizontal" Spacing="16">
+                                <TextBlock Text="{Binding RatingStars}"
+                                           IsVisible="{Binding RatingStars, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                           VerticalAlignment="Center"
+                                           Foreground="White"
+                                           Opacity="0.85"
+                                           ToolTip.Tip="{Binding RatingTooltip}" />
+                                <Button Content="GOG.com"
+                                        Classes="link"
+                                        Command="{Binding OpenStorePageCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Panel>
+
+                    <StackPanel Margin="24,20" Spacing="14">
+
+                        <TextBlock Text="{Binding Platforms}" Opacity="0.6" FontSize="12" />
+
+                        <ProgressBar IsIndeterminate="True"
+                                     Height="3"
+                                     IsVisible="{Binding IsResolving}" />
+
+                        <TextBlock Text="{Binding BuildLabel}"
+                                   FontSize="11"
+                                   Opacity="0.55"
+                                   TextWrapping="Wrap"
+                                   IsVisible="{Binding BuildLabel, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+                        <TextBlock Text="{Binding Summary}"
+                                   TextWrapping="Wrap"
+                                   IsVisible="{Binding Summary, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+                        <Border Background="#18808080" CornerRadius="4" Padding="10"
+                                IsVisible="{Binding InstallPath, Converter={x:Static ObjectConverters.IsNotNull}}">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Installs to" FontSize="11" Opacity="0.6" />
+                                <SelectableTextBlock Text="{Binding InstallPath}" FontSize="11" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="Installing again verifies and repairs the existing files."
+                                   FontSize="11"
+                                   Opacity="0.6"
+                                   TextWrapping="Wrap"
+                                   IsVisible="{Binding WasInstalledBefore}" />
+
+                        <TextBlock Text="{Binding PlayTaskDescription}"
+                                   FontSize="11"
+                                   Opacity="0.5"
+                                   IsVisible="{Binding CanPlay}" />
+
+                        <!-- Windows builds on macOS/Linux start through Wine or CrossOver. -->
+                        <StackPanel Spacing="6" IsVisible="{Binding NeedsRunner}">
+                            <TextBlock Text="RUN WITH" FontSize="10" Opacity="0.5" />
+                            <ComboBox ItemsSource="{Binding Runners}"
+                                      SelectedItem="{Binding SelectedRunner}"
+                                      IsVisible="{Binding !HasNoRunner}"
+                                      MinWidth="240">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="launching:WindowsRunner">
+                                        <TextBlock Text="{Binding DisplayName}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <TextBlock IsVisible="{Binding HasNoRunner}"
+                                       TextWrapping="Wrap"
+                                       FontSize="12"
+                                       Opacity="0.7"
+                                       Text="This is a Windows game. Install CrossOver or Wine to play it on this computer." />
+                        </StackPanel>
+
+                        <!-- Uninstall is destructive, so it asks first rather than opening a dialog. -->
+                        <StackPanel Spacing="8" IsVisible="{Binding WasInstalledBefore}">
+
+                            <Button Content="Uninstall"
+                                    Command="{Binding ConfirmUninstallCommand}"
+                                    IsVisible="{Binding !IsConfirmingUninstall}"
+                                    IsEnabled="{Binding !IsDownloading}" />
+
+                            <StackPanel Spacing="6" IsVisible="{Binding IsConfirmingUninstall}">
+                                <TextBlock TextWrapping="Wrap" FontSize="12">
+                                    <Run Text="Delete this install?" />
+                                    <Run Text="{Binding InstalledSize}" FontWeight="SemiBold" />
+                                    <Run Text="will be freed." />
+                                </TextBlock>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="Delete" Command="{Binding UninstallCommand}" />
+                                    <Button Content="Keep" Command="{Binding CancelUninstallCommand}" />
+                                </StackPanel>
+                            </StackPanel>
+
+                        </StackPanel>
+
+                        <StackPanel Spacing="6" IsVisible="{Binding ProgressText, Converter={x:Static ObjectConverters.IsNotNull}}">
+                            <ProgressBar Minimum="0" Maximum="1" Value="{Binding Progress}" Height="6" />
+                            <TextBlock Text="{Binding ProgressText}" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding Error}"
+                                   Foreground="#E06C6C"
+                                   TextWrapping="Wrap"
+                                   IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+                        <!-- Activity: achievement unlocks, grouped by day, most recent first. -->
+                        <StackPanel Spacing="10" Margin="0,16,0,0">
+                            <TextBlock Text="ACTIVITY" FontSize="11" Opacity="0.5" />
+
+                            <TextBlock Text="Loading…"
+                                       Opacity="0.6"
+                                       IsVisible="{Binding IsLoadingActivity}" />
+
+                            <TextBlock Text="No achievements unlocked yet." Opacity="0.6">
+                                <TextBlock.IsVisible>
+                                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                        <Binding Path="!IsLoadingActivity" />
+                                        <Binding Path="!HasActivity" />
+                                    </MultiBinding>
+                                </TextBlock.IsVisible>
+                            </TextBlock>
+
+                            <ItemsControl ItemsSource="{Binding ActivityGroups}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:AchievementActivityGroup">
+                                        <StackPanel Spacing="6" Margin="0,0,0,14">
+                                            <TextBlock FontSize="13">
+                                                <Run Text="{Binding Summary}" />
+                                                <Run Text=" · " Foreground="Gray" />
+                                                <Run Text="{Binding RelativeTime}" Foreground="Gray" />
+                                            </TextBlock>
+                                            <ItemsControl ItemsSource="{Binding Items}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Orientation="Horizontal" Spacing="8" />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:AchievementActivityItem">
+                                                        <Border Width="40" Height="40" CornerRadius="4"
+                                                                Background="#28808080"
+                                                                ToolTip.Tip="{Binding Name}">
+                                                            <Image Source="{Binding Icon}" Stretch="UniformToFill" />
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </ScrollViewer>
+
+    </DockPanel>
+
+</UserControl>
