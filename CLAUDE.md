@@ -289,8 +289,10 @@ strictly inside the library root, it is a real directory rather than a symlink, 
 the CLI is protected too. The CLI's `uninstall` is a dry run unless given `--yes`.
 
 UI notes: `GogSession` is the single composition root — both the app and the CLI build the client
-stack through it, so they cannot drift. The library grid uses a plain `ItemsControl` over a
-`WrapPanel`, which does **not** virtualise; fine for a few hundred tiles, worth revisiting for
+stack through it, so they cannot drift. The library grid is a `ListBox` over `Controls/TileWrapPanel`:
+as many columns as a 208 px minimum allows, each stretched to fill the row (a `WrapPanel` left a gap
+of up to a whole tile on the right), with covers held at GOG's 196x110 shape by
+`AspectRatioDecorator`. Neither virtualises; fine for a few hundred tiles, worth revisiting for
 larger libraries. Covers load for the whole library at once, throttled to six concurrent fetches.
 Sign-in happens in the window on macOS: `Goggles.Desktop/Platform/MacWebView.cs` embeds a real `WKWebView`
 through `NativeControlHost` and the Objective-C runtime, and the authorization code is taken from

@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Goggles.Desktop.ViewModels"
+             xmlns:controls="using:Goggles.Desktop.Controls"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
@@ -190,7 +191,8 @@
                          Margin="12">
                     <ListBox.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <WrapPanel />
+                            <!-- 196 px of tile plus its 6 px margin each side; tiles stretch to fill the row. -->
+                            <controls:TileWrapPanel MinItemWidth="208" />
                         </ItemsPanelTemplate>
                     </ListBox.ItemsPanel>
 
@@ -204,27 +206,29 @@
 
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:GameTileViewModel">
-                            <Border Classes="tile" Width="196" Margin="6" ToolTip.Tip="{Binding Title}">
+                            <Border Classes="tile" Margin="6" ToolTip.Tip="{Binding Title}">
                                 <StackPanel Spacing="6">
 
-                                    <Panel Height="110">
-                                        <Border Background="#28808080"
-                                                CornerRadius="4"
-                                                IsVisible="{Binding HasNoCover}" />
-                                        <Image Source="{Binding Cover}"
-                                               Stretch="UniformToFill"
-                                               Height="110" />
+                                    <!-- GOG's tile art is 196x110; keep that shape at any tile width. -->
+                                    <controls:AspectRatioDecorator Ratio="0.5612">
+                                        <Panel>
+                                            <Border Background="#28808080"
+                                                    CornerRadius="4"
+                                                    IsVisible="{Binding HasNoCover}" />
+                                            <Image Source="{Binding Cover}"
+                                                   Stretch="UniformToFill" />
 
-                                        <Border IsVisible="{Binding IsInstalled}"
-                                                Background="#CC1F7A3D"
-                                                CornerRadius="3"
-                                                Padding="6,2"
-                                                Margin="6"
-                                                HorizontalAlignment="Left"
-                                                VerticalAlignment="Top">
-                                            <TextBlock Text="Installed" FontSize="10" Foreground="White" />
-                                        </Border>
-                                    </Panel>
+                                            <Border IsVisible="{Binding IsInstalled}"
+                                                    Background="#CC1F7A3D"
+                                                    CornerRadius="3"
+                                                    Padding="6,2"
+                                                    Margin="6"
+                                                    HorizontalAlignment="Left"
+                                                    VerticalAlignment="Top">
+                                                <TextBlock Text="Installed" FontSize="10" Foreground="White" />
+                                            </Border>
+                                        </Panel>
+                                    </controls:AspectRatioDecorator>
 
                                     <TextBlock Text="{Binding Title}"
                                                TextWrapping="NoWrap"
