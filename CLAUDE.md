@@ -17,7 +17,7 @@ dotnet run --project Goggles.Cli -- builds <productId> [--os windows|osx|linux]
 dotnet run --project Goggles.Cli -- manifest <productId> --depots   # fetch + outline v2 manifests
 dotnet run --project Goggles.Cli -- securelink <productId>
 dotnet run --project Goggles.Cli -- chunk <productId> <compressedMd5>   # download + verify one chunk
-dotnet run --project Goggles.Cli -- galaxy-service --capture ./galaxy   # log what a game asks Galaxy for
+dotnet run --project Goggles.Cli -- galaxy-service --capture ./galaxy   # sign a game in and log what it asks Galaxy for
 ```
 
 **CI** (`.github/workflows/ci.yml`) runs on every PR and push to `main`: build and test on Linux, macOS
@@ -256,7 +256,7 @@ Games do not report achievements themselves. Their Galaxy SDK connects to a serv
 `127.0.0.1:9977`, and that service talks to GOG. Launched outside Galaxy, a game has nobody to report
 to, so **Goggles only reads achievements and playtime today** — `GameplayClient` never writes. Heroic
 solves this by bundling Comet (Rust, imLinguin/comet) as a separate process; Goggles is building the
-service into Core instead, in phases, and phase 1 (observe only) is done.
+service into Core instead, in phases; phases 1 (observe) and 2 (answer auth) are done.
 
 - **Framing:** big-endian `u16` header length, a protobuf `gog.protocols.pb.Header` (`sort`, `type`,
   `size`, `oseq`), then `size` bytes of body. A reply quotes the request's `oseq` as `rseq`, header
@@ -291,12 +291,30 @@ service into Core instead, in phases, and phase 1 (observe only) is done.
 - Unanswered, it re-sent the identical request (same `oseq` 1, same connection) four times over
   about nine seconds, then went quiet; the game kept running.
 
+**Answering auth (phase 2, same game, same day):** `CommunicationHandler` answers
+`AUTH_INFO_REQUEST` with a refresh token issued to the *game's* client
+(`AuthService.GetTokenForClientAsync` — `without_new_session=1`, not stored, and a 403 there means
+"not owned", so it never raises `SignInRequired`), the `galaxyUserId` from `userData.json` with
+`2 << 56` OR-ed in, and the username. Like Comet it first pushes `OVERLAY_STATE_CHANGE_NOTIFICATION`
+(initialized) — Goggles has no overlay; it is sent because SDKs are known to work after it. The game
+accepted the reply and immediately asked for, in order:
+
+- three `sort 2 type 3` messages (Comet's "webbroker": topic subscriptions for push notifications —
+  not decoded, not needed for achievements);
+- `GET_USER_STATS_REQUEST` and `GET_USER_ACHIEVEMENTS_REQUEST`, both with the tagged user id;
+- `GET_LEADERBOARDS_REQUEST`.
+
+Unanswered, each is re-sent with the same `oseq` every few seconds. Comet never sends an error reply:
+unimplemented requests get silence, an unowned game gets its connection closed
+(`GalaxyConnectionRefusedException`), and a failed exchange still gets a reply without a token so the
+game can run offline.
+
 The rest still comes from Comet's source and the protocol definitions. `galaxy-service --capture
 <dir>` is how each piece gets checked: it logs every message, answers nothing yet, and writes each
-frame with credentials redacted. Bodies it cannot decode
+frame with credentials redacted (it answers what `CommunicationHandler` handles). Bodies it cannot decode
 (other subprotocols) are written as received, so inspect captures before committing them.
 
-Next phases: answer auth and library info, then achievements and stats with an on-disk queue for
+Next phases: achievements and stats with an on-disk queue for
 offline unlocks, then start the service from the desktop app around a launch, then CrossOver.
 
 ### Library cache
