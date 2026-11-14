@@ -151,6 +151,56 @@ public sealed class AuthService
         }
     }
 
+    /// <summary>
+    /// Trades the stored refresh token for credentials issued to another OAuth client — a game's own
+    /// Galaxy <c>clientId</c>/<c>clientSecret</c>, which is what its SDK expects to be handed. This is
+    /// what Galaxy's local service does (observed by Comet, not documented by GOG).
+    /// <c>without_new_session</c> leaves the user's own session, and so the stored tokens, untouched;
+    /// the result is not stored.
+    /// </summary>
+    /// <remarks>
+    /// A refusal never raises <see cref="SignInRequired"/>: a 403 here means the account does not own
+    /// the game, which says nothing about the session itself.
+    /// </remarks>
+    /// <exception cref="GogAuthException">No credentials are stored, or GOG refused the exchange.</exception>
+    public async Task<TokenSet> GetTokenForClientAsync(
+        string clientId,
+        string clientSecret,
+        bool openId = false,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(clientId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(clientSecret);
+
+        var current = await SignalRejectionAsync(() => LoadOrThrowAsync(cancellationToken)).ConfigureAwait(false);
+
+        var query = new Dictionary<string, string>
+        {
+            ["client_id"] = clientId,
+            ["client_secret"] = clientSecret,
+            ["grant_type"] = "refresh_token",
+            ["refresh_token"] = current.RefreshToken,
+            ["without_new_session"] = "1",
+        };
+
+        if (openId)
+        {
+            query["scope"] = "openid";
+        }
+
+        try
+        {
+            return await RequestTokensAsync(query, cancellationToken).ConfigureAwait(false);
+        }
+        catch (GogAuthException exception) when (exception.RequiresSignIn)
+        {
+            throw new GogAuthException(
+                $"GOG refused a token for client {clientId}: {exception.Message}",
+                exception.StatusCode,
+                exception.ResponseBody);
+        }
+    }
+
     /// <summary>Forgets the stored credentials.</summary>
     public ValueTask SignOutAsync(CancellationToken cancellationToken = default) =>
         _store.ClearAsync(cancellationToken);
