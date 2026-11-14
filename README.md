@@ -1,5 +1,7 @@
 # Goggles
 
+[![CI](https://github.com/angelospanag/Goggles/actions/workflows/ci.yml/badge.svg)](https://github.com/angelospanag/Goggles/actions/workflows/ci.yml)
+
 A fast, native, cross-platform client for [GOG.com](https://www.gog.com) — written in C# with
 Avalonia UI, and built from scratch down to the download and manifest engine.
 

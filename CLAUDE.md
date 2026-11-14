@@ -19,6 +19,14 @@ dotnet run --project Goggles.Cli -- securelink <productId>
 dotnet run --project Goggles.Cli -- chunk <productId> <compressedMd5>   # download + verify one chunk
 ```
 
+**CI** (`.github/workflows/ci.yml`) runs on every PR and push to `main`: build and test on Linux, macOS
+and Windows with `-warnaserror` (so any new warning fails, and so does a package with a known
+vulnerability, via the NuGet audit settings in `Directory.Build.props`); `dotnet format
+--verify-no-changes`; and `dotnet list package --vulnerable --include-transitive`, which also runs
+weekly because advisories appear without code changes. Dependabot opens PRs for NuGet packages and for
+the workflow's actions, which are pinned to commit hashes. To reproduce locally:
+`dotnet build -c Release -warnaserror && dotnet test -c Release --no-build && dotnet format --verify-no-changes`.
+
 **`Goggles.Cli` is a development harness, not a product.** It exists for the things the desktop app
 cannot do — capturing raw responses with `--dump`, decoding undocumented blobs with
 `manifest --depots`, isolating failures (`play --dry-run` proved launch resolution was correct while
