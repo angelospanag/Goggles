@@ -95,6 +95,7 @@ resolve <id>            list the files a build would install
 download <id>           download a build (resumable; --parallel N, --verify, --lang, --out)
 play <id>               launch an installed game (--dry-run to just resolve it)
 uninstall <id>          delete an installed game (dry run unless --yes)
+galaxy-service          stand in for Galaxy's local service and log what a game sends (--capture <dir>)
 --dump <dir>            write raw API responses to <dir>
 ```
 
@@ -122,12 +123,43 @@ Goggles drives these tools; it doesn't install them, create bottles, or set up a
 redistributables (DirectX, Visual C++ runtimes). If a game starts and then complains about a missing
 DLL, install the runtime into its bottle from CrossOver.
 
+## Achievements
+
+Goggles shows each game's GOG achievements and your play time, but **playing a game through
+Goggles does not unlock anything yet.** The numbers you see are whatever GOG has already recorded,
+from Galaxy or another client.
+
+That's because games don't report achievements themselves. Each one ships with GOG's Galaxy SDK,
+which hands unlocks to a background service that the GOG Galaxy app runs on your machine
+(`127.0.0.1:9977`). That service signs in with the game's own credentials and forwards the unlock to
+GOG. Started by anything other than Galaxy, a game finds nobody listening, and its unlocks go
+nowhere.
+
+Goggles is building its own version of that service, inside the app:
+
+| | How unlocks reach GOG |
+|---|---|
+| GOG Galaxy | Galaxy's own background service |
+| Heroic | [Comet](https://github.com/imLinguin/comet), a separate Rust program Heroic downloads and starts alongside the game |
+| Goggles | Built into `Goggles.Core`: no extra program, and it uses the sign-in Goggles already has |
+
+It's being built in phases. **Phase 1 is done:** the service listens and logs what a game sends,
+and Absolute Drift on macOS has connected to it and asked to sign in. It doesn't answer yet. Next it
+signs games in, then records achievements and stats (including unlocks made offline), then starts
+automatically when you press Play, and finally works for Windows games in CrossOver.
+
+To watch what a game asks for, run `galaxy-service` from the command-line harness, then launch the
+game. Quit GOG Galaxy (or Comet) first, since only one program can use the port. The message
+formats come from the community's reverse-engineered
+[gog_protocols](https://github.com/Yepoleb/gog_protocols) (public domain), checked against real
+game traffic.
+
 ## Layout
 
 | Project | What it is |
 |---|---|
 | `Goggles.Desktop` | The Avalonia desktop app — sign-in, library, game pages, installing and playing |
-| `Goggles.Core` | Everything else: API clients, auth, library sync, downloads, launching. No UI dependency. |
+| `Goggles.Core` | Everything else: API clients, auth, library sync, downloads, launching, the Galaxy service. No UI dependency. |
 | `Goggles.Cli` | Development harness for driving Core against live GOG |
 | `Goggles.Core.Tests` | Unit tests; run headless |
 
@@ -145,6 +177,7 @@ download engine can't accidentally touch the UI thread.
 - [ ] Install execution — running bundled dependencies and redistributables
 - [x] Launch — native builds, via the play tasks GOG ships with each install
 - [ ] Cloud save sync
+- [ ] Achievement and stats sync — Goggles' own stand-in for Galaxy's local service *(in progress)*
 - [ ] Delta patching *(deferred — v1 does full downloads only)*
 - [x] Windows games on macOS and Linux through CrossOver (any bottle) or Wine, chosen per game
 - [ ] Creating CrossOver bottles and managing Wine builds from Goggles

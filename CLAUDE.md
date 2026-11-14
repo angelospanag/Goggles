@@ -17,6 +17,7 @@ dotnet run --project Goggles.Cli -- builds <productId> [--os windows|osx|linux]
 dotnet run --project Goggles.Cli -- manifest <productId> --depots   # fetch + outline v2 manifests
 dotnet run --project Goggles.Cli -- securelink <productId>
 dotnet run --project Goggles.Cli -- chunk <productId> <compressedMd5>   # download + verify one chunk
+dotnet run --project Goggles.Cli -- galaxy-service --capture ./galaxy   # log what a game asks Galaxy for
 ```
 
 **CI** (`.github/workflows/ci.yml`) runs on every PR and push to `main`: build and test on Linux, macOS
@@ -57,6 +58,7 @@ Goggles.Core/     all logic; no UI dependency
                     Wine), WindowsRunnerDiscovery, RunnerPreferences (runners.json)
   Installs/         GameUninstaller — guarded directory removal
   Diagnostics/      ResponseDumpHandler — credential-redacting response dumps
+  Galaxy/           CommunicationService — stands in for Galaxy's local service (achievements)
 Goggles.Cli/      dev harness for exercising Core against live GOG
 Goggles.Core.Tests/
 ```
@@ -247,6 +249,55 @@ changes. Goggles drives a runner the user already has and never installs one.
   runtime's quoting rules so each argument reaches the game intact through `ArgumentList`.
 - The runner's output is discarded like a native game's, so a runner that fails immediately is
   currently silent in the UI — run the command by hand to see why.
+
+### Achievements: the Galaxy Communication Service (captured, not documented)
+
+Games do not report achievements themselves. Their Galaxy SDK connects to a service Galaxy runs on
+`127.0.0.1:9977`, and that service talks to GOG. Launched outside Galaxy, a game has nobody to report
+to, so **Goggles only reads achievements and playtime today** — `GameplayClient` never writes. Heroic
+solves this by bundling Comet (Rust, imLinguin/comet) as a separate process; Goggles is building the
+service into Core instead, in phases, and phase 1 (observe only) is done.
+
+- **Framing:** big-endian `u16` header length, a protobuf `gog.protocols.pb.Header` (`sort`, `type`,
+  `size`, `oseq`), then `size` bytes of body. A reply quotes the request's `oseq` as `rseq`, header
+  extension 100; extension 101 is a status code numbered like HTTP. `sort` 1 is the communication
+  service. Definitions are vendored, CC0, in `Galaxy/Protocols` — see its README.
+- **Auth is per game.** `AUTH_INFO_REQUEST` carries the *game's* `client_id`/`client_secret` (the
+  ones in the build manifest); the service exchanges the user's refresh token for that client at
+  `auth.gog.com/token?grant_type=refresh_token&without_new_session=1`, and returns the user id with
+  `2 << 56` OR-ed in. Unlocks then go to `gameplay.gog.com/clients/{gameClientId}/users/{userId}/…`.
+- **The SDK is a shim.** `LIBRARY_INFO_REQUEST` asks where GOG's "peer" library is; the service must
+  download it (`cfg.gog.com/desktop-galaxy-peer/7/master/files-{windows,osx}.json`) and say where.
+- **Playtime is the launcher's job, not the service's.** Comet never records sessions; Heroic does it
+  itself after a game exits: `POST gameplay.gog.com/games/{productId}/users/{userId}/sessions` with
+  `{session_date (unix seconds), time (minutes)}`, expecting `201`, skipping sessions under a minute
+  and queueing them while offline (`updateGOGPlaytime` in Heroic's `gog/games.ts`). Unverified by
+  Goggles so far.
+- **Product id or client id?** `GameplayClient` reads achievements at `clients/{productId}/…` with
+  Galaxy's own token, confirmed against a live account; Comet reads and writes at
+  `clients/{gameClientId}/…` with the game's token. Which form the *write* accepts is unverified.
+- Under Wine, some SDK versions also want a registered Windows service (Comet ships a dummy one).
+
+**Confirmed against a real game (2026-11-14, Absolute Drift, native macOS, `libGalaxy64.dylib`):**
+
+- The framing is exactly as above; Goggles re-encodes the captured frame byte for byte (test
+  `A_frame_captured_from_a_real_game_decodes_as_expected`).
+- The **first** message is `AUTH_INFO_REQUEST` — `client_id`, `client_secret`, `game_pid`, no
+  `platform_type` or `openid`. This SDK never sent `LIBRARY_INFO_REQUEST`, so the peer download is
+  not needed for every game; it is presumably a newer-SDK thing.
+- The game's `client_id` (`52472569771423029`) is not its product id (`1136126792`); it is the
+  `clientId` in the build manifest and in the installed `goggame-{id}.info`, so Goggles knows it
+  before launch.
+- Unanswered, it re-sent the identical request (same `oseq` 1, same connection) four times over
+  about nine seconds, then went quiet; the game kept running.
+
+The rest still comes from Comet's source and the protocol definitions. `galaxy-service --capture
+<dir>` is how each piece gets checked: it logs every message, answers nothing yet, and writes each
+frame with credentials redacted. Bodies it cannot decode
+(other subprotocols) are written as received, so inspect captures before committing them.
+
+Next phases: answer auth and library info, then achievements and stats with an on-disk queue for
+offline unlocks, then start the service from the desktop app around a launch, then CrossOver.
 
 ### Library cache
 
