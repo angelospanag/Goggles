@@ -23,8 +23,9 @@ public class WindowsRunnerTests : IDisposable
 
         var startInfo = runner.CreateStartInfo(Target("-skipintro"));
 
+        // Built with Path.Combine, so the separator is the host's; CrossOver itself only exists on macOS.
         Assert.Equal(
-            "/Applications/CrossOver.app/Contents/SharedSupport/CrossOver/bin/wine",
+            Path.Combine("/Applications/CrossOver.app", "Contents", "SharedSupport", "CrossOver", "bin", "wine"),
             startInfo.FileName);
         Assert.Equal(
             ["--bottle", "Games", "--workdir", "/Games/Tyranny", "/Games/Tyranny/Tyranny.exe", "-skipintro"],
