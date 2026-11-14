@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Goggles.Cli;
@@ -8,6 +9,7 @@ using Goggles.Core.Api.Auth;
 using Goggles.Core.Api.ContentSystem;
 using Goggles.Core.Diagnostics;
 using Goggles.Core.Downloads;
+using Goggles.Core.Galaxy;
 using Goggles.Core.Installs;
 using Goggles.Core.Launching;
 using Goggles.Core.Library;
@@ -28,6 +30,8 @@ var verifyHashes = TakeFlag(arguments, "--verify");
 var dryRun = TakeFlag(arguments, "--dry-run");
 var assumeYes = TakeFlag(arguments, "--yes");
 var libraryRoot = TakeOption(arguments, "--library");
+var galaxyPort = int.TryParse(TakeOption(arguments, "--port"), out var port) ? port : CommunicationService.DefaultPort;
+var captureDirectory = TakeOption(arguments, "--capture");
 var parallelChunks = int.TryParse(TakeOption(arguments, "--parallel"), out var parsed) ? parsed : 4;
 var command = arguments.FirstOrDefault();
 var argument = arguments.Skip(1).FirstOrDefault();
@@ -77,6 +81,9 @@ try
 
         case "uninstall":
             return UninstallGame();
+
+        case "galaxy-service":
+            return await GalaxyServiceAsync();
 
         case null or "help" or "--help" or "-h":
             PrintUsage();
@@ -637,6 +644,57 @@ string Save(string fileName, string json)
     return path;
 }
 
+async Task<int> GalaxyServiceAsync()
+{
+    if (captureDirectory is not null)
+    {
+        Directory.CreateDirectory(captureDirectory);
+    }
+
+    var received = 0;
+    await using var service = new CommunicationService(
+        (connection, message, _) =>
+        {
+            Console.WriteLine($"[{connection.Id}] {CommunicationMessages.Describe(message)}");
+
+            if (captureDirectory is not null)
+            {
+                var name = $"{Interlocked.Increment(ref received):D4}-c{connection.Id}-s{message.Sort}-t{message.Type}.bin";
+                File.WriteAllBytes(Path.Combine(captureDirectory, name), GalaxyFraming.Encode(CommunicationMessages.Redact(message)));
+            }
+
+            // Observe only: no answer yet, so a game will wait on its first request.
+            return ValueTask.FromResult<GalaxyMessage?>(null);
+        },
+        galaxyPort,
+        Console.Error);
+
+    try
+    {
+        service.Start();
+    }
+    catch (InvalidOperationException exception)
+    {
+        Console.Error.WriteLine(exception.Message);
+        return 1;
+    }
+
+    Console.WriteLine($"Listening on {service.LocalEndpoint}. Launch a game; Ctrl+C to stop.");
+
+    // Ctrl+C or a plain `kill`: either way, stop listening and close game connections cleanly.
+    var stopped = new TaskCompletionSource();
+    void Stop(PosixSignalContext context)
+    {
+        context.Cancel = true;
+        stopped.TrySetResult();
+    }
+
+    using var interrupt = PosixSignalRegistration.Create(PosixSignal.SIGINT, Stop);
+    using var terminate = PosixSignalRegistration.Create(PosixSignal.SIGTERM, Stop);
+    await stopped.Task;
+    return 0;
+}
+
 void PrintUsage()
 {
     Console.WriteLine(
@@ -659,6 +717,8 @@ void PrintUsage()
           stats <id>         Print achievement/playtime stats, plus the raw sessions response body
                               (gameplay.gog.com is undocumented — this is how to verify decoding
                               against a real account)
+          galaxy-service     Stand in for Galaxy's local Communication Service and log every message a
+                             game sends it (observe only for now: nothing is answered yet)
 
         Options:
           --hidden           Include hidden products (library)
@@ -674,6 +734,8 @@ void PrintUsage()
           --library <dir>    Where games are installed (default: ~/Games/Goggles)
           --out <dir>        Where to save fetched manifests (default: fixtures)
           --dump <dir>       Write every raw response to <dir>, for building test fixtures
+          --port <n>         Port for galaxy-service (default: 9977, which games expect)
+          --capture <dir>    Also save each message galaxy-service receives, credentials redacted
         """);
 }
 

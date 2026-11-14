@@ -145,6 +145,7 @@ download engine can't accidentally touch the UI thread.
 - [ ] Install execution — running bundled dependencies and redistributables
 - [x] Launch — native builds, via the play tasks GOG ships with each install
 - [ ] Cloud save sync
+- [ ] Achievement and stats sync — Goggles' own stand-in for Galaxy's local service *(in progress)*
 - [ ] Delta patching *(deferred — v1 does full downloads only)*
 - [x] Windows games on macOS and Linux through CrossOver (any bottle) or Wine, chosen per game
 - [ ] Creating CrossOver bottles and managing Wine builds from Goggles
