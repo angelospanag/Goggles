@@ -32,6 +32,7 @@ var assumeYes = TakeFlag(arguments, "--yes");
 var libraryRoot = TakeOption(arguments, "--library");
 var galaxyPort = int.TryParse(TakeOption(arguments, "--port"), out var port) ? port : CommunicationService.DefaultPort;
 var captureDirectory = TakeOption(arguments, "--capture");
+var requestedExtra = int.TryParse(TakeOption(arguments, "--extra"), out var extraIndex) ? extraIndex : (int?)null;
 var parallelChunks = int.TryParse(TakeOption(arguments, "--parallel"), out var parsed) ? parsed : 4;
 var command = arguments.FirstOrDefault();
 var argument = arguments.Skip(1).FirstOrDefault();
@@ -54,6 +55,9 @@ try
 
         case "stats":
             return await StatsAsync();
+
+        case "details":
+            return await DetailsAsync();
 
         case "logout":
             return await LogoutAsync();
@@ -233,6 +237,46 @@ async Task<int> StatsAsync()
     var sessionsUrl = new Uri(GogHosts.Gameplay, $"clients/{productId}/users/{userId}/sessions");
     Console.WriteLine($"Raw sessions response ({sessionsUrl}):");
     Console.WriteLine(await rawClient.GetStringAsync(sessionsUrl));
+
+    return 0;
+}
+
+/// <summary>
+/// Prints what <c>account/gameDetails/{id}.json</c> decodes to — the response the detail page
+/// reads its hero art and game info from. Pair with <c>--dump</c> to keep the raw body.
+/// </summary>
+async Task<int> DetailsAsync()
+{
+    if (argument is null || !long.TryParse(argument, out var productId))
+    {
+        Console.Error.WriteLine("Usage: details <productId>");
+        return 2;
+    }
+
+    using var clients = CreateSession();
+    var details = await clients.Embed.GetGameDetailsAsync(productId);
+    if (details is null)
+    {
+        Console.Error.WriteLine($"GOG returned no details for {productId} — the account does not own it.");
+        return 1;
+    }
+
+    if (requestedExtra is { } index)
+    {
+        if (index < 0 || index >= details.Extras.Count || details.Extras[index].ManualUrl is not { } manualUrl)
+        {
+            Console.Error.WriteLine($"No extra #{index}; this game has {details.Extras.Count} (numbered from 0).");
+            return 2;
+        }
+
+        var stopwatch = Stopwatch.StartNew();
+        var path = await clients.Embed.DownloadExtraAsync(manualUrl, outputDirectory);
+        Console.WriteLine($"Saved {details.Extras[index].Name} to {path} ({Bytes(new FileInfo(path).Length)}, {stopwatch.Elapsed.TotalSeconds:N1}s)");
+        return 0;
+    }
+
+    var indented = new JsonSerializerOptions { WriteIndented = true };
+    Console.WriteLine(JsonSerializer.Serialize(details with { CdKey = details.CdKey is null ? null : "[redacted]" }, indented));
 
     return 0;
 }
@@ -720,6 +764,8 @@ void PrintUsage()
           download <id>      Download a build into <library>/<installDirectory>
           play <id>          Launch an installed game (--dry-run resolves without starting it)
           uninstall <id>     Delete an installed game (dry run unless --yes)
+          details <id>       Print a game's account details (extras, owned DLC, links);
+                             --extra <n> downloads extra n into --out instead
           stats <id>         Print achievement/playtime stats, plus the raw sessions response body
                               (gameplay.gog.com is undocumented — this is how to verify decoding
                               against a real account)

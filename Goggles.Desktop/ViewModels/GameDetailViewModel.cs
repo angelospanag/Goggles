@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.Input;
 using Goggles.Core.Api;
 using Goggles.Core.Api.Auth;
 using Goggles.Core.Api.Embed;
+using Goggles.Core.Api.Embed.Models;
 using Goggles.Core.Api.Gameplay.Models;
 using Goggles.Core.Downloads;
 using Goggles.Core.Installs;
@@ -167,6 +168,32 @@ public partial class GameDetailViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool HasActivity { get; set; }
 
+    /// <summary>Goodies for this game and for any DLC of it the account owns.</summary>
+    public ObservableCollection<GameExtraItem> Extras { get; } = [];
+
+    /// <summary>Titles of the DLC the account owns — gameDetails lists no others.</summary>
+    public ObservableCollection<string> OwnedDlcs { get; } = [];
+
+    [ObservableProperty]
+    public partial bool IsLoadingDetails { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasExtras { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasOwnedDlcs { get; set; }
+
+    [ObservableProperty]
+    public partial Uri? ForumLink { get; set; }
+
+    /// <summary>Where goodies are saved: one folder per game under the user's Downloads, since the
+    /// library root holds exactly what GOG's builds produce and nothing else.</summary>
+    public string ExtrasDirectory => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        "Downloads",
+        "Goggles",
+        string.Concat(Title.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)).Trim());
+
     [RelayCommand]
     private void Back() => BackRequested?.Invoke(this, EventArgs.Empty);
 
@@ -185,6 +212,15 @@ public partial class GameDetailViewModel : ViewModelBase
 
         var url = $"https://www.gog.com/game/{slug}";
         Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })?.Dispose();
+    }
+
+    [RelayCommand]
+    private void OpenForum()
+    {
+        if (ForumLink is { } link)
+        {
+            Process.Start(new ProcessStartInfo(link.ToString()) { UseShellExecute = true })?.Dispose();
+        }
     }
 
     public string? InstallPath { get; private set; }
@@ -229,10 +265,15 @@ public partial class GameDetailViewModel : ViewModelBase
         _allAchievementsRaw = [];
         AchievementsUnlocked = 0;
         AchievementsTotal = 0;
+        Extras.Clear();
+        OwnedDlcs.Clear();
+        HasExtras = false;
+        HasOwnedDlcs = false;
+        ForumLink = null;
 
-        // Independent of the build resolve below, and of each other — a slow/failing hero fetch
+        // Independent of the build resolve below, and of each other — a slow/failing details fetch
         // must never prevent the activity feed from loading, or vice versa.
-        _ = LoadHeroAsync();
+        _ = LoadDetailsAsync();
         _ = LoadActivityAsync();
 
         try
@@ -471,19 +512,48 @@ public partial class GameDetailViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Fetches the hero background image. Independent of <see cref="LoadActivityAsync"/> and the
-    /// install/build resolve in <see cref="LoadAsync"/> — never surfaces its own errors, since a
-    /// missing hero image is cosmetic, not a reason to block the rest of the page. The catch-all
-    /// is deliberate: this runs unawaited (see <see cref="LoadAsync"/>), so any exception that
-    /// escaped here would simply vanish as an unobserved task exception rather than being visible
-    /// anywhere, silently leaving Hero unset — which is already the correct fallback state.
+    /// Fetches gameDetails once and fills everything that comes from it: the hero image, the
+    /// goodies, owned DLC and the forum link. Independent of <see cref="LoadActivityAsync"/> and the
+    /// install/build resolve in <see cref="LoadAsync"/> — never surfaces its own errors, since none
+    /// of this is a reason to block the rest of the page. The catch-all is deliberate: this runs
+    /// unawaited (see <see cref="LoadAsync"/>), so any exception that escaped here would simply
+    /// vanish as an unobserved task exception, leaving the page in its correct empty state.
     /// </summary>
-    private async Task LoadHeroAsync()
+    private async Task LoadDetailsAsync()
     {
+        IsLoadingDetails = true;
         try
         {
             var details = await _embed.GetGameDetailsAsync(Tile.Id);
-            if (details?.BackgroundImage is { Length: > 0 } backgroundImage &&
+            if (details is null)
+            {
+                return;
+            }
+
+            ForumLink = GogLink(details.ForumLink);
+
+            foreach (var extra in details.Extras)
+            {
+                AddExtra(extra, from: null);
+            }
+
+            foreach (var dlc in details.Dlcs)
+            {
+                if (dlc.Title is { Length: > 0 } dlcTitle)
+                {
+                    OwnedDlcs.Add(dlcTitle);
+                }
+
+                foreach (var extra in dlc.Extras)
+                {
+                    AddExtra(extra, from: dlc.Title);
+                }
+            }
+
+            HasExtras = Extras.Count > 0;
+            HasOwnedDlcs = OwnedDlcs.Count > 0;
+
+            if (details.BackgroundImage is { Length: > 0 } backgroundImage &&
                 Uri.TryCreate(NormalizeImageUrl(backgroundImage) + ".jpg", UriKind.Absolute, out var heroUri))
             {
                 Hero = await _covers.LoadRawAsync(heroUri);
@@ -491,11 +561,31 @@ public partial class GameDetailViewModel : ViewModelBase
         }
         catch (Exception exception)
         {
-            // No hero image this session; the page still works without one. Logged rather than
-            // fully silent, since this runs unawaited and would otherwise vanish untraceably.
-            Console.Error.WriteLine($"[GameDetailViewModel] hero image failed for {Tile.Id}: {exception}");
+            // Logged rather than fully silent, since this runs unawaited and would otherwise
+            // vanish untraceably.
+            Console.Error.WriteLine($"[GameDetailViewModel] game details failed for {Tile.Id}: {exception}");
+        }
+        finally
+        {
+            IsLoadingDetails = false;
         }
     }
+
+    private void AddExtra(GameExtra extra, string? from)
+    {
+        if (extra.ManualUrl is { Length: > 0 })
+        {
+            Extras.Add(new GameExtraItem(_embed, extra, from, ExtrasDirectory));
+        }
+    }
+
+    /// <summary>A link from GOG's JSON, accepted only if it is https and stays on gog.com — it is
+    /// handed to the system to open.</summary>
+    private static Uri? GogLink(string? link) =>
+        Uri.TryCreate(link, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps &&
+        (uri.Host == "gog.com" || uri.Host.EndsWith(".gog.com", StringComparison.OrdinalIgnoreCase))
+            ? uri
+            : null;
 
     /// <summary>
     /// Makes GOG's protocol-relative image URLs usable — the same fix
@@ -503,7 +593,7 @@ public partial class GameDetailViewModel : ViewModelBase
     /// <c>GameDetails.BackgroundImage</c> comes from the same embed.gog.com dialect but isn't routed
     /// through that mapper. Confirmed live: without this, <see cref="Uri.TryCreate"/> silently
     /// resolves a leading "//" to the "file" scheme instead of failing cleanly, and the fetch dies
-    /// with "The 'file' scheme is not supported." <see cref="LoadHeroAsync"/> also appends ".jpg" to
+    /// with "The 'file' scheme is not supported." <see cref="LoadDetailsAsync"/> also appends ".jpg" to
     /// the result — despite looking like a complete URL, BackgroundImage is just as extension-less
     /// as tile art, and GOG's image CDN 404s a bare hash with no suffix at all (confirmed live); an
     /// unqualified ".jpg" with no size token serves the image at its full native resolution.
@@ -512,7 +602,7 @@ public partial class GameDetailViewModel : ViewModelBase
         image.StartsWith("//", StringComparison.Ordinal) ? $"https:{image}" : image;
 
     /// <summary>
-    /// Fetches the achievement-unlock activity feed. Independent of <see cref="LoadHeroAsync"/> —
+    /// Fetches the achievement-unlock activity feed. Independent of <see cref="LoadDetailsAsync"/> —
     /// see its remarks for why the catch-all here is deliberate too.
     /// </summary>
     private async Task LoadActivityAsync()
@@ -585,7 +675,7 @@ public partial class GameDetailViewModel : ViewModelBase
     /// <summary>
     /// Builds the "My progress" tab's full achievement list, fetching an icon for every entry —
     /// not just unlocked ones, unlike <see cref="BuildActivityGroupsAsync"/>. Never surfaces its
-    /// own errors, for the same reason <see cref="LoadHeroAsync"/>/<see cref="LoadActivityAsync"/>
+    /// own errors, for the same reason <see cref="LoadDetailsAsync"/>/<see cref="LoadActivityAsync"/>
     /// don't: it runs unawaited from <see cref="OnActiveTabChanged"/>.
     /// </summary>
     private async Task BuildProgressListAsync()
