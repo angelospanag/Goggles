@@ -26,7 +26,8 @@ dotnet run --project Goggles.Cli -- galaxy-service --capture ./galaxy   # sign a
 and Windows with `-warnaserror` (so any new warning fails, and so does a package with a known
 vulnerability, via the NuGet audit settings in `Directory.Build.props`); `dotnet format
 --verify-no-changes`; and `dotnet list package --vulnerable --include-transitive`, which also runs
-weekly because advisories appear without code changes. Dependabot opens PRs for NuGet packages and for
+weekly because advisories appear without code changes. A macOS job also publishes `Goggles.app`, checks the
+bundle, and keeps it zipped as a run artifact for a week. Dependabot opens PRs for NuGet packages and for
 the workflow's actions, which are pinned to commit hashes. To reproduce locally:
 `dotnet build -c Release -warnaserror && dotnet test -c Release --no-build && dotnet format --verify-no-changes`.
 

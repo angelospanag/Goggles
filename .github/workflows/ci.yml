@@ -43,6 +43,35 @@ jobs:
       - name: Test
         run: dotnet test -c Release --no-build
 
+  # The Goggles.app a macOS publish assembles is outside the build, so it gets checked here. The
+  # zipped bundle is kept for a week so a pull request can be tried on a Mac without building it.
+  macos-bundle:
+    name: macOS app bundle
+    if: github.event_name != 'schedule'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+      - name: Publish
+        run: dotnet publish Goggles.Desktop -c Release -r osx-arm64 -p:SelfContained=true -o publish/osx-arm64 -warnaserror
+      - name: Check the bundle
+        run: |
+          app=publish/osx-arm64/Goggles.app
+          test -x "$app/Contents/MacOS/Goggles"
+          test -s "$app/Contents/Resources/goggles.icns"
+          plutil -lint "$app/Contents/Info.plist"
+      # ditto keeps the executable bits and symlinks a plain zip would lose.
+      - name: Zip
+        run: ditto -c -k --keepParent publish/osx-arm64/Goggles.app Goggles-macos-arm64.zip
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Goggles-macos-arm64
+          path: Goggles-macos-arm64.zip
+          retention-days: 7
+          if-no-files-found: error
+
   format:
     name: Lint (dotnet format)
     if: github.event_name != 'schedule'
