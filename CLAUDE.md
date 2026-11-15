@@ -10,6 +10,7 @@ dotnet build -c Release                         # whole solution (Release); SDK 
 dotnet test                                     # Core tests; needs no display server
 dotnet format                                   # format the code
 dotnet run --project Goggles.Desktop            # desktop app
+dotnet publish Goggles.Desktop -c Release -r osx-arm64 -p:SelfContained=true -o publish/osx-arm64   # + Goggles.app
 dotnet run --project Goggles.Cli -- help        # dev harness
 dotnet run --project Goggles.Cli -- login       # OAuth: paste back the redirect URL
 dotnet run --project Goggles.Cli -- library --dump ./fixtures
@@ -48,6 +49,7 @@ but **dumps still contain the user's email, account id and owned library — nev
 ```
 Goggles.Desktop/  Avalonia UI — sign-in, library grid/list, game detail pages
   Services/         CoverImageCache (disk-cached _196.jpg tiles)
+  Packaging/macOS/  Info.plist and goggles.icns for the Goggles.app a macOS publish produces
 Goggles.Core/     all logic; no UI dependency
   Api/Auth/         OAuth2, token storage, the auth DelegatingHandler
   Api/Embed/        embed.gog.com — owned library, user data

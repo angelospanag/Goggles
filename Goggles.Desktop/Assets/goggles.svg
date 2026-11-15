@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>Goggles</title>
+  <rect width="256" height="256" rx="58.88" fill="#5B3FD0"/>
+  <g transform="translate(19.2 19.2) scale(2.176)">
+    <rect x="2" y="44" width="96" height="8" rx="4" fill="#16181C"/>
+    <rect x="10" y="30" width="80" height="34" rx="17" fill="#FFFFFF"/>
+    <circle cx="26" cy="58" r="15" fill="#FFFFFF"/>
+    <circle cx="74" cy="58" r="15" fill="#FFFFFF"/>
+    <circle cx="28" cy="49" r="12" fill="#16181C"/>
+    <circle cx="72" cy="49" r="12" fill="#16181C"/>
+    <rect x="25" y="41.5" width="6" height="15" rx="1.5" fill="#FFFFFF"/>
+    <rect x="20.5" y="46" width="15" height="6" rx="1.5" fill="#FFFFFF"/>
+    <circle cx="72" cy="43.5" r="2.6" fill="#F2A33A"/>
+    <circle cx="72" cy="54.5" r="2.6" fill="#FFFFFF"/>
+    <circle cx="66.5" cy="49" r="2.6" fill="#FFFFFF"/>
+    <circle cx="77.5" cy="49" r="2.6" fill="#FFFFFF"/>
+  </g>
+</svg>

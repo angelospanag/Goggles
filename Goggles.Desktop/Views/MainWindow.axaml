@@ -6,7 +6,7 @@
         mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="640"
         x:Class="Goggles.Desktop.Views.MainWindow"
         x:DataType="vm:MainViewModel"
-        Icon="/Assets/avalonia-logo.ico"
+        Icon="/Assets/goggles.ico"
         Width="1060" Height="760"
         MinWidth="820" MinHeight="620"
         Title="Goggles">
