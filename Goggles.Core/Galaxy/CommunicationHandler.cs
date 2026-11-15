@@ -30,24 +30,24 @@ public sealed class CommunicationHandler
         _log = log;
     }
 
-    public async ValueTask<GalaxyMessage?> HandleAsync(
+    public async ValueTask<GalaxyOutcome> HandleAsync(
         GalaxyConnection connection,
         GalaxyMessage request,
         CancellationToken cancellationToken)
     {
         if (request.Sort != CommunicationMessages.Sort)
         {
-            return null;
+            return new NoReply();
         }
 
         return (MessageType)request.Type switch
         {
             MessageType.AuthInfoRequest => await AuthInfoAsync(connection, request, cancellationToken).ConfigureAwait(false),
-            _ => null,
+            _ => new NoReply(),
         };
     }
 
-    private async Task<GalaxyMessage?> AuthInfoAsync(
+    private async Task<GalaxyOutcome> AuthInfoAsync(
         GalaxyConnection connection,
         GalaxyMessage request,
         CancellationToken cancellationToken)
@@ -74,8 +74,8 @@ public sealed class CommunicationHandler
         {
             // GOG will not issue this game's credentials to this account — it is not owned. Comet
             // closes the connection here rather than replying, so the SDK stops asking.
-            throw new GalaxyConnectionRefusedException(
-                $"GOG refused a token for client {body.ClientId}; the account does not own it.", exception);
+            return new RefuseConnection(
+                $"GOG refused a token for client {body.ClientId}; the account does not own it.");
         }
         catch (Exception exception) when (exception is GogAuthException or HttpRequestException)
         {
@@ -136,9 +136,3 @@ public sealed class CommunicationHandler
 
     private sealed record SignedInUser(ulong GalaxyUserId, string UserName);
 }
-
-/// <summary>
-/// Thrown by a <see cref="GalaxyMessageHandler"/> to end the game's connection instead of replying.
-/// </summary>
-public sealed class GalaxyConnectionRefusedException(string message, Exception? innerException = null)
-    : Exception(message, innerException);

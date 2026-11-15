@@ -710,11 +710,14 @@ async Task<int> GalaxyServiceAsync()
                 File.WriteAllBytes(Path.Combine(captureDirectory, name), GalaxyFraming.Encode(CommunicationMessages.Redact(message)));
             }
 
-            var reply = await handler.HandleAsync(connection, message, cancellationToken);
-            Console.WriteLine(reply is null
-                ? $"[{connection.Id}] -> (no answer)"
-                : $"[{connection.Id}] -> {CommunicationMessages.Describe(reply)}");
-            return reply;
+            var outcome = await handler.HandleAsync(connection, message, cancellationToken);
+            Console.WriteLine(outcome switch
+            {
+                GalaxyMessage reply => $"[{connection.Id}] -> {CommunicationMessages.Describe(reply)}",
+                NoReply or null => $"[{connection.Id}] -> (no answer)",
+                RefuseConnection refusal => $"[{connection.Id}] -> (closing: {refusal.Reason})",
+            });
+            return outcome;
         },
         galaxyPort,
         Console.Error);
