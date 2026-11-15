@@ -4,10 +4,14 @@
     <OutputType>WinExe</OutputType>
     <!-- The executable, and the name macOS shows in the menu bar, stay "Goggles". -->
     <AssemblyName>Goggles</AssemblyName>
+    <!-- Shown in Finder's Get Info, through the bundle's Info.plist. -->
+    <Version>0.1.0</Version>
     <RootNamespace>Goggles.Desktop</RootNamespace>
     <!-- LibraryImport generates unsafe marshalling code for the Objective-C interop. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- The .exe's icon on Windows; the window icon is set in MainWindow.axaml. -->
+    <ApplicationIcon>Assets\goggles.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -29,5 +33,36 @@
   <ItemGroup>
     <ProjectReference Include="..\Goggles.Core\Goggles.Core.csproj" />
   </ItemGroup>
+
+  <!--
+    A macOS publish also produces Goggles.app beside the plain output, because macOS reads an
+    application's icon, name and identity from its bundle; an unbundled executable gets a generic
+    Dock icon. The bundle is the published files under Contents/MacOS, plus Info.plist and the
+    .icns from Packaging/macOS.
+
+      dotnet publish Goggles.Desktop -c Release -r osx-arm64 -p:SelfContained=true -o publish/osx-arm64
+  -->
+  <Target Name="BundleMacApp" AfterTargets="Publish" Condition="$(RuntimeIdentifier.StartsWith('osx'))">
+    <PropertyGroup>
+      <MacAppBundle>$(PublishDir)Goggles.app/</MacAppBundle>
+      <MacInfoPlist>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/Packaging/macOS/Info.plist').Replace('{VERSION}', '$(Version)'))</MacInfoPlist>
+    </PropertyGroup>
+
+    <!-- Launched from Finder or the Dock, the app does not inherit DOTNET_ROOT, so a
+         framework-dependent bundle only starts where .NET is installed system-wide. -->
+    <Warning Condition="'$(SelfContained)' != 'true'"
+             Text="Goggles.app is framework-dependent; publish with -p:SelfContained=true so it starts from Finder." />
+
+    <ItemGroup>
+      <MacBundleFiles Include="$(PublishDir)**/*" Exclude="$(MacAppBundle)**" />
+    </ItemGroup>
+
+    <RemoveDir Directories="$(MacAppBundle)" />
+    <Copy SourceFiles="@(MacBundleFiles)"
+          DestinationFiles="@(MacBundleFiles->'$(MacAppBundle)Contents/MacOS/%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="Packaging/macOS/goggles.icns" DestinationFolder="$(MacAppBundle)Contents/Resources" />
+    <WriteLinesToFile File="$(MacAppBundle)Contents/Info.plist" Lines="$(MacInfoPlist)" Overwrite="true" />
+    <Message Importance="high" Text="Goggles.app -> $(MacAppBundle)" />
+  </Target>
 
 </Project>

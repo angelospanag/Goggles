@@ -10,6 +10,7 @@ dotnet build -c Release                         # whole solution (Release); SDK 
 dotnet test                                     # Core tests; needs no display server
 dotnet format                                   # format the code
 dotnet run --project Goggles.Desktop            # desktop app
+dotnet publish Goggles.Desktop -c Release -r osx-arm64 -p:SelfContained=true -o publish/osx-arm64   # + Goggles.app
 dotnet run --project Goggles.Cli -- help        # dev harness
 dotnet run --project Goggles.Cli -- login       # OAuth: paste back the redirect URL
 dotnet run --project Goggles.Cli -- library --dump ./fixtures
@@ -25,7 +26,9 @@ dotnet run --project Goggles.Cli -- galaxy-service --capture ./galaxy   # sign a
 and Windows with `-warnaserror` (so any new warning fails, and so does a package with a known
 vulnerability, via the NuGet audit settings in `Directory.Build.props`); `dotnet format
 --verify-no-changes`; and `dotnet list package --vulnerable --include-transitive`, which also runs
-weekly because advisories appear without code changes. Dependabot opens PRs for NuGet packages and for
+weekly because advisories appear without code changes. A package job publishes self-contained builds for
+osx-arm64 (as `Goggles.app`), win-x64 and linux-x64, checks each, and keeps the archives as run
+artifacts for a week. Dependabot opens PRs for NuGet packages and for
 the workflow's actions, which are pinned to commit hashes. To reproduce locally:
 `dotnet build -c Release -warnaserror && dotnet test -c Release --no-build && dotnet format --verify-no-changes`.
 
@@ -48,6 +51,7 @@ but **dumps still contain the user's email, account id and owned library — nev
 ```
 Goggles.Desktop/  Avalonia UI — sign-in, library grid/list, game detail pages
   Services/         CoverImageCache (disk-cached _196.jpg tiles)
+  Packaging/macOS/  Info.plist and goggles.icns for the Goggles.app a macOS publish produces
 Goggles.Core/     all logic; no UI dependency
   Api/Auth/         OAuth2, token storage, the auth DelegatingHandler
   Api/Embed/        embed.gog.com — owned library, user data
