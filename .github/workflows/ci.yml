@@ -43,32 +43,61 @@ jobs:
       - name: Test
         run: dotnet test -c Release --no-build
 
-  # The Goggles.app a macOS publish assembles is outside the build, so it gets checked here. The
-  # zipped bundle is kept for a week so a pull request can be tried on a Mac without building it.
-  macos-bundle:
-    name: macOS app bundle
+  # Publishing is outside the build job, and so is the Goggles.app a macOS publish assembles, so
+  # each platform's self-contained publish is checked here. The archives are kept for a week, so a
+  # pull request can be tried on any of the three without building it.
+  package:
+    name: Package (${{ matrix.rid }})
     if: github.event_name != 'schedule'
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            rid: osx-arm64
+          - os: windows-latest
+            rid: win-x64
+          - os: ubuntu-latest
+            rid: linux-x64
+    runs-on: ${{ matrix.os }}
+    env:
+      OUT: publish/${{ matrix.rid }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: global.json
       - name: Publish
-        run: dotnet publish Goggles.Desktop -c Release -r osx-arm64 -p:SelfContained=true -o publish/osx-arm64 -warnaserror
-      - name: Check the bundle
+        run: dotnet publish Goggles.Desktop -c Release -r ${{ matrix.rid }} -p:SelfContained=true -o ${{ env.OUT }} -warnaserror
+
+      - name: Check and zip the app bundle
+        if: runner.os == 'macOS'
         run: |
-          app=publish/osx-arm64/Goggles.app
+          app="$OUT/Goggles.app"
           test -x "$app/Contents/MacOS/Goggles"
           test -s "$app/Contents/Resources/goggles.icns"
           plutil -lint "$app/Contents/Info.plist"
-      # ditto keeps the executable bits and symlinks a plain zip would lose.
-      - name: Zip
-        run: ditto -c -k --keepParent publish/osx-arm64/Goggles.app Goggles-macos-arm64.zip
+          # ditto keeps the executable bits and symlinks a plain zip would lose.
+          ditto -c -k --keepParent "$app" Goggles-${{ matrix.rid }}.zip
+
+      - name: Check and zip the executable
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "$env:OUT/Goggles.exe")) { throw "Goggles.exe is missing" }
+          Compress-Archive -Path "$env:OUT/*" -DestinationPath Goggles-${{ matrix.rid }}.zip
+
+      - name: Check and archive the executable
+        if: runner.os == 'Linux'
+        run: |
+          test -x "$OUT/Goggles"
+          # tar keeps the executable bit, which a zip would lose.
+          tar -czf Goggles-${{ matrix.rid }}.tar.gz -C "$OUT" .
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: Goggles-macos-arm64
-          path: Goggles-macos-arm64.zip
+          name: Goggles-${{ matrix.rid }}
+          path: Goggles-${{ matrix.rid }}.*
           retention-days: 7
           if-no-files-found: error
 
