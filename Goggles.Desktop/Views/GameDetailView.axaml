@@ -75,12 +75,63 @@
         <ScrollViewer>
             <Grid>
 
-                <!-- "Extras": not built yet, matching the Go port's scope. -->
-                <TextBlock Text="Not available yet."
-                           Opacity="0.5"
-                           HorizontalAlignment="Center"
-                           Margin="0,80,0,0"
-                           IsVisible="{Binding ActiveTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:DetailTab.Extras}}" />
+                <!-- Extras: owned DLC, then goodies, each downloadable on its own. -->
+                <StackPanel Margin="24,20" Spacing="14"
+                            IsVisible="{Binding ActiveTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:DetailTab.Extras}}">
+
+                    <TextBlock Text="Loading…" Opacity="0.6" IsVisible="{Binding IsLoadingDetails}" />
+
+                    <StackPanel Spacing="6" IsVisible="{Binding HasOwnedDlcs}">
+                        <TextBlock Text="OWNED DLC" FontSize="11" Opacity="0.5" />
+                        <ItemsControl ItemsSource="{Binding OwnedDlcs}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <TextBlock Text="{Binding}" FontSize="13" Margin="0,0,0,4" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <StackPanel Spacing="6" IsVisible="{Binding HasExtras}">
+                        <TextBlock FontSize="11" Opacity="0.5">
+                            <Run Text="GOODIES · saved to" />
+                            <Run Text="{Binding ExtrasDirectory}" />
+                        </TextBlock>
+                        <ItemsControl ItemsSource="{Binding Extras}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:GameExtraItem">
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="0,0,0,10">
+                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}" FontSize="13" TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding Detail}" FontSize="11" Opacity="0.6" />
+                                            <TextBlock Text="{Binding Status}"
+                                                       FontSize="11"
+                                                       Opacity="0.7"
+                                                       TextWrapping="Wrap"
+                                                       IsVisible="{Binding Status, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <Button Content="Show"
+                                                    Command="{Binding RevealCommand}"
+                                                    IsVisible="{Binding SavedPath, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                                            <Button Content="Download" Command="{Binding DownloadCommand}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <TextBlock Text="This game has no extras." Opacity="0.6">
+                        <TextBlock.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                <Binding Path="!IsLoadingDetails" />
+                                <Binding Path="!HasExtras" />
+                                <Binding Path="!HasOwnedDlcs" />
+                            </MultiBinding>
+                        </TextBlock.IsVisible>
+                    </TextBlock>
+                </StackPanel>
 
                 <!-- My progress: every achievement, locked and unlocked. -->
                 <StackPanel Margin="24,20" Spacing="14"
@@ -161,6 +212,10 @@
                                 <Button Content="GOG.com"
                                         Classes="link"
                                         Command="{Binding OpenStorePageCommand}" />
+                                <Button Content="Forum"
+                                        Classes="link"
+                                        Command="{Binding OpenForumCommand}"
+                                        IsVisible="{Binding ForumLink, Converter={x:Static ObjectConverters.IsNotNull}}" />
                             </StackPanel>
                         </StackPanel>
                     </Panel>

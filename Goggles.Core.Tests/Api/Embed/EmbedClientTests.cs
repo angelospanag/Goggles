@@ -165,6 +165,128 @@ public class EmbedClientTests
     }
 
     [Fact]
+    public async Task GetGameDetailsAsync_reads_extras()
+    {
+        // Shape captured from Baldur's Gate II: Enhanced Edition, 2026-11-15.
+        var handler = new StubHttpMessageHandler("""
+            {
+              "title": "Baldur's Gate II: Enhanced Edition",
+              "extras": [
+                { "manualUrl": "/downloads/baldurs_gate_2_enhanced_edition/36323", "name": "manual",
+                  "type": "manuals", "info": 1, "size": "5 MB" },
+                { "manualUrl": "/downloads/baldurs_gate_2_enhanced_edition/36343", "name": "wallpapers",
+                  "type": "wallpapers", "info": 10, "size": "7 MB" }
+              ],
+              "dlcs": []
+            }
+            """);
+
+        var details = await new EmbedClient(new HttpClient(handler)).GetGameDetailsAsync(
+            1207666373,
+            TestContext.Current.CancellationToken);
+
+        var wallpapers = details!.Extras[1];
+        Assert.Equal(2, details.Extras.Count);
+        Assert.Equal("/downloads/baldurs_gate_2_enhanced_edition/36343", wallpapers.ManualUrl);
+        Assert.Equal("wallpapers", wallpapers.Type);
+        Assert.Equal(10, wallpapers.Info);
+        Assert.Equal("7 MB", wallpapers.Size);
+    }
+
+    [Fact]
+    public async Task DownloadExtraAsync_saves_the_file_under_the_name_GOG_redirected_to()
+    {
+        var payload = new byte[] { 1, 2, 3, 4, 5 };
+        var handler = new StubHttpMessageHandler((request, _) =>
+        {
+            var response = StubHttpMessageHandler.Bytes(payload);
+
+            // What the transport reports after following the redirect to the CDN.
+            response.RequestMessage = new HttpRequestMessage(
+                HttpMethod.Get,
+                "https://gog-cdn-fastly.gog.com/secure/extras/baldurs_gate_2_avatars.zip?token=x");
+            return response;
+        });
+        var directory = Directory.CreateTempSubdirectory().FullName;
+
+        try
+        {
+            var path = await new EmbedClient(new HttpClient(handler)).DownloadExtraAsync(
+                "/downloads/baldurs_gate_2_enhanced_edition/36333",
+                directory,
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(Path.Combine(directory, "baldurs_gate_2_avatars.zip"), path);
+            Assert.Equal(payload, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+            Assert.False(File.Exists(path + ".part"));
+            Assert.Equal(
+                "https://embed.gog.com/downloads/baldurs_gate_2_enhanced_edition/36333",
+                handler.RequestedUris.Single().ToString());
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("//evil.example/downloads/x/1")]
+    [InlineData("https://evil.example/downloads/x/1")]
+    [InlineData("/account/userData.json")]
+    public async Task DownloadExtraAsync_refuses_anything_but_an_embed_downloads_path(string manualUrl)
+    {
+        var handler = new StubHttpMessageHandler("{}");
+
+        await Assert.ThrowsAsync<GogApiException>(
+            () => new EmbedClient(new HttpClient(handler)).DownloadExtraAsync(
+                manualUrl,
+                Path.GetTempPath(),
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Empty(handler.RequestedUris);
+    }
+
+    [Fact]
+    public async Task DownloadExtraAsync_does_not_save_a_web_page_as_the_file()
+    {
+        var handler = new StubHttpMessageHandler((_, _) => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("<html>Sign in</html>", System.Text.Encoding.UTF8, "text/html"),
+        });
+        var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+
+        await Assert.ThrowsAsync<GogApiException>(
+            () => new EmbedClient(new HttpClient(handler)).DownloadExtraAsync(
+                "/downloads/game/1",
+                directory,
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.False(Directory.Exists(directory));
+    }
+
+    [Theory]
+    [InlineData("attachment; filename=\"manual.pdf\"", null, "manual.pdf")]
+    [InlineData("attachment; filename=\"../../etc/passwd\"", null, "passwd")]
+    [InlineData(null, "https://cdn.gog.com/a/b/soundtrack%20mp3.zip", "soundtrack mp3.zip")]
+    [InlineData(null, "https://cdn.gog.com/", "extra-36323")]
+    public void ExtraFileName_is_a_bare_file_name(string? disposition, string? finalUri, string expected)
+    {
+        using var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([]) };
+        if (disposition is not null)
+        {
+            response.Content.Headers.ContentDisposition =
+                System.Net.Http.Headers.ContentDispositionHeaderValue.Parse(disposition);
+        }
+
+        if (finalUri is not null)
+        {
+            response.RequestMessage = new HttpRequestMessage(HttpMethod.Get, finalUri);
+        }
+
+        Assert.Equal(expected, EmbedClient.ExtraFileName(response, "/downloads/game/36323"));
+    }
+
+    [Fact]
     public async Task GetGameDetailsAsync_returns_null_for_an_unowned_product()
     {
         var handler = new StubHttpMessageHandler("null");

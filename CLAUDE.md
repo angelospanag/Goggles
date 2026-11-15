@@ -17,6 +17,7 @@ dotnet run --project Goggles.Cli -- builds <productId> [--os windows|osx|linux]
 dotnet run --project Goggles.Cli -- manifest <productId> --depots   # fetch + outline v2 manifests
 dotnet run --project Goggles.Cli -- securelink <productId>
 dotnet run --project Goggles.Cli -- chunk <productId> <compressedMd5>   # download + verify one chunk
+dotnet run --project Goggles.Cli -- details <productId> [--extra <n> --out <dir>]   # gameDetails; fetch one goodie
 dotnet run --project Goggles.Cli -- galaxy-service --capture ./galaxy   # sign a game in and log what it asks Galaxy for
 ```
 
@@ -316,6 +317,27 @@ frame with credentials redacted (it answers what `CommunicationHandler` handles)
 
 Next phases: achievements and stats with an on-disk queue for
 offline unlocks, then start the service from the desktop app around a launch, then CrossOver.
+
+### Extras and DLC on the detail page (captured, not documented)
+
+`account/gameDetails/{id}.json` — already fetched for the hero image — also carries the goodies and
+owned DLC shown on the Extras tab. Sampled across 26 games on 2026-11-15:
+
+- `extras[]` is a plain array of `{manualUrl, name, type, info, size}`; 20 of 26 games had some.
+  `size` is display text (`"5 MB"`), and `type` is not reliable — one `"avatars"` entry was a 3 GB
+  installer. Only `downloads` has the awkward `[["English", {…}]]` shape.
+- `manualUrl` (`/downloads/{slug}/{id}`) is fetched from embed.gog.com with the bearer token and
+  redirects to a signed CDN URL whose last segment is the real file name. The transport follows the
+  redirect and drops `Authorization` on the way. `EmbedClient.DownloadExtraAsync` refuses anything
+  that is not an embed `/downloads/` path, since the token goes wherever that URL points.
+- `dlcs[]` lists only DLC the account owns, each shaped like its parent (so it has its own `extras`).
+  Unverified against a real entry: the account used so far owns no DLC.
+- `textInformation` was empty for all 26; `features` lists Galaxy features (achievements, cloud
+  saves, overlay), which Goggles mostly does not provide, so neither is shown. `changelog` is HTML
+  up to ~70 KB and is not shown yet.
+
+Goodies are saved under `~/Downloads/Goggles/<title>/`, not the library root, which holds only what
+GOG's builds produce.
 
 ### Library cache
 
