@@ -13,7 +13,7 @@ public class CommunicationServiceTests
     public async Task A_reply_quotes_the_request_sequence_and_keeps_its_sort()
     {
         await using var service = Start((_, request, _) =>
-            ValueTask.FromResult<GalaxyMessage?>(new GalaxyMessage
+            ValueTask.FromResult<GalaxyOutcome>(new GalaxyMessage
             {
                 Sort = 99, // overwritten: a reply always travels in the request's subprotocol
                 Type = request.Type + 1,
@@ -31,12 +31,12 @@ public class CommunicationServiceTests
     }
 
     [Fact]
-    public async Task A_handler_returning_null_sends_nothing_and_the_connection_carries_on()
+    public async Task A_handler_with_no_reply_sends_nothing_and_the_connection_carries_on()
     {
         await using var service = Start((_, request, _) =>
-            ValueTask.FromResult<GalaxyMessage?>(request.Sequence == 2
+            ValueTask.FromResult<GalaxyOutcome>(request.Sequence == 2
                 ? new GalaxyMessage { Sort = 1, Type = 4 }
-                : null));
+                : new NoReply()));
         using var game = await ConnectAsync(service);
 
         await SendAsync(game, new GalaxyMessage { Sort = 1, Type = 1, Sequence = 1 });
@@ -51,7 +51,39 @@ public class CommunicationServiceTests
     {
         await using var service = Start((_, request, _) => request.Sequence == 1
             ? throw new InvalidOperationException("boom")
-            : ValueTask.FromResult<GalaxyMessage?>(new GalaxyMessage { Sort = 1, Type = 4 }));
+            : ValueTask.FromResult<GalaxyOutcome>(new GalaxyMessage { Sort = 1, Type = 4 }));
+        using var game = await ConnectAsync(service);
+
+        await SendAsync(game, new GalaxyMessage { Sort = 1, Type = 1, Sequence = 1 });
+        await SendAsync(game, new GalaxyMessage { Sort = 1, Type = 3, Sequence = 2 });
+
+        Assert.Equal(2u, (await ReceiveAsync(game)).RespondsTo);
+    }
+
+    [Fact]
+    public async Task A_refusal_closes_only_that_connection()
+    {
+        await using var service = Start((_, request, _) => ValueTask.FromResult<GalaxyOutcome>(request.Type == 1
+            ? new RefuseConnection("not owned")
+            : new GalaxyMessage { Sort = 1, Type = 4 }));
+        using var refused = await ConnectAsync(service);
+        using var healthy = await ConnectAsync(service);
+
+        await SendAsync(refused, new GalaxyMessage { Sort = 1, Type = 1, Sequence = 1 });
+        var closed = await GalaxyFraming.ReadAsync(refused.GetStream(), TestContext.Current.CancellationToken)
+            .WaitAsync(Timeout, TestContext.Current.CancellationToken);
+        Assert.Null(closed);
+
+        await SendAsync(healthy, new GalaxyMessage { Sort = 1, Type = 3, Sequence = 2 });
+        Assert.Equal(2u, (await ReceiveAsync(healthy)).RespondsTo);
+    }
+
+    [Fact]
+    public async Task A_default_outcome_is_treated_as_no_reply()
+    {
+        await using var service = Start((_, request, _) => ValueTask.FromResult<GalaxyOutcome>(request.Sequence == 2
+            ? new GalaxyMessage { Sort = 1, Type = 4 }
+            : default(GalaxyOutcome)));
         using var game = await ConnectAsync(service);
 
         await SendAsync(game, new GalaxyMessage { Sort = 1, Type = 1, Sequence = 1 });
@@ -64,7 +96,7 @@ public class CommunicationServiceTests
     public async Task Unreadable_bytes_close_only_that_connection()
     {
         await using var service = Start((_, _, _) =>
-            ValueTask.FromResult<GalaxyMessage?>(new GalaxyMessage { Sort = 1, Type = 2 }));
+            ValueTask.FromResult<GalaxyOutcome>(new GalaxyMessage { Sort = 1, Type = 2 }));
         using var broken = await ConnectAsync(service);
         using var healthy = await ConnectAsync(service);
 
@@ -100,7 +132,7 @@ public class CommunicationServiceTests
     [Fact]
     public async Task It_listens_on_loopback_only()
     {
-        await using var service = Start((_, _, _) => ValueTask.FromResult<GalaxyMessage?>(null));
+        await using var service = Start((_, _, _) => ValueTask.FromResult<GalaxyOutcome>(new NoReply()));
 
         Assert.Equal(IPAddress.Loopback, service.LocalEndpoint.Address);
     }
@@ -108,9 +140,9 @@ public class CommunicationServiceTests
     [Fact]
     public async Task A_taken_port_is_reported_by_name()
     {
-        await using var first = Start((_, _, _) => ValueTask.FromResult<GalaxyMessage?>(null));
+        await using var first = Start((_, _, _) => ValueTask.FromResult<GalaxyOutcome>(new NoReply()));
         await using var second = new CommunicationService(
-            (_, _, _) => ValueTask.FromResult<GalaxyMessage?>(null),
+            (_, _, _) => ValueTask.FromResult<GalaxyOutcome>(new NoReply()),
             first.LocalEndpoint.Port);
 
         var exception = Assert.Throws<InvalidOperationException>(second.Start);
@@ -120,7 +152,7 @@ public class CommunicationServiceTests
     [Fact]
     public async Task Disposing_with_a_game_still_connected_does_not_hang()
     {
-        var service = Start((_, _, _) => ValueTask.FromResult<GalaxyMessage?>(null));
+        var service = Start((_, _, _) => ValueTask.FromResult<GalaxyOutcome>(new NoReply()));
         using var game = await ConnectAsync(service);
         await SendAsync(game, new GalaxyMessage { Sort = 1, Type = 1, Sequence = 1 });
 

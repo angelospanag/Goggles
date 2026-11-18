@@ -5,14 +5,28 @@ using System.Net.Sockets;
 namespace Goggles.Core.Galaxy;
 
 /// <summary>
-/// Handles one message from a game. Return a reply to send it back, or null to send nothing; the
-/// service fills in the reply's <see cref="GalaxyMessage.Sort"/> and
+/// Handles one message from a game and says what to do about it — see <see cref="GalaxyOutcome"/>.
+/// The service fills in a reply's <see cref="GalaxyMessage.Sort"/> and
 /// <see cref="GalaxyMessage.RespondsTo"/>.
 /// </summary>
-public delegate ValueTask<GalaxyMessage?> GalaxyMessageHandler(
+public delegate ValueTask<GalaxyOutcome> GalaxyMessageHandler(
     GalaxyConnection connection,
     GalaxyMessage request,
     CancellationToken cancellationToken);
+
+/// <summary>
+/// The three things a handler can do with a request, which is everything Comet does with one: answer
+/// it, ignore it (unimplemented requests get silence, and the SDK gives up on that call), or end the
+/// game's connection (a game the account does not own). Refusal is an expected answer, not a failure,
+/// so it is a value here rather than an exception.
+/// </summary>
+public union GalaxyOutcome(GalaxyMessage, NoReply, RefuseConnection);
+
+/// <summary>Send nothing; the connection carries on.</summary>
+public sealed record NoReply;
+
+/// <summary>Close the game's connection instead of replying, so its SDK stops asking.</summary>
+public sealed record RefuseConnection(string Reason);
 
 /// <summary>
 /// Goggles' stand-in for GOG Galaxy's local Communication Service: the socket a game's Galaxy SDK
@@ -132,15 +146,10 @@ public sealed class CommunicationService : IAsyncDisposable
     {
         while (await GalaxyFraming.ReadAsync(connection.Stream, cancellationToken).ConfigureAwait(false) is { } request)
         {
-            GalaxyMessage? reply;
+            GalaxyOutcome outcome;
             try
             {
-                reply = await _handler(connection, request, cancellationToken).ConfigureAwait(false);
-            }
-            catch (GalaxyConnectionRefusedException exception)
-            {
-                _log?.WriteLine($"Galaxy: connection {connection.Id} refused: {exception.Message}");
-                return;
+                outcome = await _handler(connection, request, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -150,11 +159,19 @@ public sealed class CommunicationService : IAsyncDisposable
                 continue;
             }
 
-            if (reply is not null)
+            // A statement rather than an exhaustive switch expression, so a default(GalaxyOutcome) —
+            // which matches no case — is read as "no reply" instead of throwing.
+            switch (outcome)
             {
-                await connection.SendAsync(
-                    reply with { Sort = request.Sort, RespondsTo = request.Sequence },
-                    cancellationToken).ConfigureAwait(false);
+                case GalaxyMessage reply:
+                    await connection.SendAsync(
+                        reply with { Sort = request.Sort, RespondsTo = request.Sequence },
+                        cancellationToken).ConfigureAwait(false);
+                    break;
+
+                case RefuseConnection refusal:
+                    _log?.WriteLine($"Galaxy: connection {connection.Id} refused: {refusal.Reason}");
+                    return;
             }
         }
     }

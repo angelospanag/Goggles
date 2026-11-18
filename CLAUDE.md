@@ -311,7 +311,7 @@ accepted the reply and immediately asked for, in order:
 
 Unanswered, each is re-sent with the same `oseq` every few seconds. Comet never sends an error reply:
 unimplemented requests get silence, an unowned game gets its connection closed
-(`GalaxyConnectionRefusedException`), and a failed exchange still gets a reply without a token so the
+(a handler returns the `GalaxyOutcome` union — reply, `NoReply` or `RefuseConnection`), and a failed exchange still gets a reply without a token so the
 game can run offline.
 
 The rest still comes from Comet's source and the protocol definitions. `galaxy-service --capture
