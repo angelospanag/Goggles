@@ -9,6 +9,19 @@ Avalonia UI, and built from scratch down to the download and manifest engine.
 > against the real GOG API, from the desktop app as well as the CLI. On macOS and Linux, Windows-only
 > titles run through CrossOver or Wine. Not ready for daily use.
 
+![Your GOG library in Goggles: a grid of cover art with search, genre filter and sorting](docs/screenshots/library.png)
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/game-overview.png" alt="A game's page: build size, install location, the CrossOver bottle it runs with, and recent achievement activity"></td>
+    <td width="50%"><img src="docs/screenshots/achievements.png" alt="The My progress tab: unlocked achievements with when they were earned, and locked and hidden ones below"></td>
+  </tr>
+  <tr>
+    <td align="center">A game's page — install details and which runner it uses</td>
+    <td align="center">Achievements, as GOG has recorded them</td>
+  </tr>
+</table>
+
 ## Why
 
 [Heroic Games Launcher](https://heroicgameslauncher.com) already does "GOG launcher with a GUI"
